@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue May 15 22:42:49 2018
-
 @author: sjv1030_hp
 """
 
+## This script pulls data from EIA.gov API and from Quandl.com
+## Spot nat gas and wti (oil) prices are available on a daily, weekly, and monthly basis
+## Two dataframes ('oil_data' & 'ng_data') are curated with monthly fundamental and economic data
+## Quarterly real GDP is also available in 'gdpr'
 
 import pandas as pd
 import quandl
