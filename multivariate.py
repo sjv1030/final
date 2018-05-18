@@ -222,10 +222,34 @@ data = getData(sym='ng',freq='m',eco=1)
 ## Convert all the columns to m/m% change
 dmm = data.pct_change()[1:]
 
-y = dmm['nat_gas'][1:]
-x = dmm.loc[:,dmm.columns != 'nat_gas'].shift().dropna()
+# Loop through 1:4 lags to see which produces the best rsquared (naive assessment)
+rsq_mm = []
+for l in range(1,5):
+    y = dmm['nat_gas'][l:]
+    x = dmm.loc[:,dmm.columns != 'nat_gas'].shift(l).dropna()
+        
+    # Add a constant with most of your regressions
+    x = sm.add_constant(x)
+    
+    ## Split data into train and test 
+    x_train = x.loc[:'20161231']
+    x_test = x.loc['20170131':]
+    
+    y_train = y.loc[:'20161231']
+    y_test = y.loc['20170131':]
+    
+    ols_modelmm = sm.OLS(y_train,x_train) # create model
+    ols_fitmm = ols_modelmm.fit() # fit  model
+    
+    # add lag and rsquared values to list
+    rsq_mm.append((l,ols_fitmm.rsquared))
 
+# extract best lag judging by rsquared alone
+lstar = max(rsq_mm, key = lambda x: x[1])[0]
 
+y = dmm['nat_gas'][lstar:]
+x = dmm.loc[:,dmm.columns != 'nat_gas'].shift(lstar).dropna()
+    
 # Add a constant with most of your regressions
 x = sm.add_constant(x)
 
@@ -236,9 +260,8 @@ x_test = x.loc['20170131':]
 y_train = y.loc[:'20161231']
 y_test = y.loc['20170131':]
 
-
-ols_modelmm = sm.OLS(y_train,x_train) # creating the model
-ols_fitmm = ols_modelmm.fit() # rebalancing the model
+ols_modelmm = sm.OLS(y_train,x_train) # create model
+ols_fitmm = ols_modelmm.fit() # fit  model
 
 # Print OLS summary
 print(ols_fitmm.summary())
@@ -251,9 +274,35 @@ plt.show()
 ## Convert all the columns to y/y% change
 dyy = data.pct_change(4)[4:]
 
-y = dyy['nat_gas'][1:]
-x = dyy.loc[:,dyy.columns != 'nat_gas'].shift().dropna()
 
+# Loop through 1:4 lags to see which produces the best rsquared (naive assessment)
+rsq_yy = []
+for l in range(1,5):
+    y = dyy['nat_gas'][l:]
+    x = dyy.loc[:,dyy.columns != 'nat_gas'].shift(l).dropna()
+        
+    # Add a constant with most of your regressions
+    x = sm.add_constant(x)
+    
+    ## Split data into train and test 
+    x_train = x.loc[:'20161231']
+    x_test = x.loc['20170131':]
+    
+    y_train = y.loc[:'20161231']
+    y_test = y.loc['20170131':]
+    
+    ols_modelyy = sm.OLS(y_train,x_train) # create model
+    ols_fityy = ols_modelyy.fit() # fit  model
+    
+    # add lag and rsquared values to list
+    rsq_yy.append((l,ols_fityy.rsquared))
+
+# extract best lag judging by rsquared alone
+lstaryy = max(rsq_yy, key = lambda x: x[1])[0]
+
+y = dyy['nat_gas'][lstaryy:]
+x = dyy.loc[:,dyy.columns != 'nat_gas'].shift(lstaryy).dropna()
+    
 # Add a constant with most of your regressions
 x = sm.add_constant(x)
 
@@ -264,9 +313,8 @@ x_test = x.loc['20170131':]
 y_train = y.loc[:'20161231']
 y_test = y.loc['20170131':]
 
-
-ols_modelyy = sm.OLS(y_train,x_train) # creating the model
-ols_fityy = ols_modelyy.fit() # rebalancing the model
+ols_modelyy = sm.OLS(y_train,x_train) # create model
+ols_fityy = ols_modelyy.fit() # fit  model
 
 # Print OLS summary
 print(ols_fityy.summary())
@@ -274,3 +322,7 @@ print(ols_fityy.summary())
 # Not sure how to make this qqplot bigger
 sm.qqplot(ols_fityy.resid, fit=True, line='45')
 plt.show()
+
+
+
+
