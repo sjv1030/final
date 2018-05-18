@@ -16,13 +16,13 @@ from urllib.request import urlopen
 
 ###################################
 ## This is supposed  to be imported
-# from pyscripts import get_Data
+# from py_scripts import get_Data_old
 ###################################
 
 
 # this is the name of the outter folder and file
 # stcuture is [script name].[program]
-# t = get_Data.getData()
+# t = get_Data_old.getData()
 
 
 ####################################################
