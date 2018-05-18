@@ -121,8 +121,6 @@ def getData(sym='o',freq='d',eco=0):
                 oil_data = pd.concat([oil_data, v], axis=1)
             
             oil_data['tot_supply'] = oil_data['prod'] + oil_data['import']
-            oil_data['netbal'] = oil_data['inv'].diff() ## change in inventory is what we're after
-            oil_data.dropna(inplace=True)
             oil_data.index = pd.to_datetime(oil_data.index+'01')
             oil_data.index = oil_data.index.to_period('M').to_timestamp('M')
             
@@ -193,3 +191,4 @@ def getData(sym='o',freq='d',eco=0):
             ng_data = pd.concat([ng_data, econ_m], join='inner', axis=1)
             
             return ng_data
+
