@@ -219,25 +219,58 @@ def getData(sym='o',freq='d',eco=0):
 ## Get data
 data = getData(sym='ng',freq='m',eco=1)
 
-## Convert all the columns to % change except for net balance
-d1 = data.loc[:, data.columns != 'netbal'].pct_change()
-d1 = pd.concat([d1, data['netbal']], axis = 1)[1:]
+## Convert all the columns to m/m% change
+dmm = data.pct_change()[1:]
 
-y = d1['nat_gas'][1:]
-x = d1.loc[:,d1.columns != 'nat_gas'].shift().dropna()
+y = dmm['nat_gas'][1:]
+x = dmm.loc[:,dmm.columns != 'nat_gas'].shift().dropna()
+
 
 # Add a constant with most of your regressions
 x = sm.add_constant(x)
 
-ols_model = sm.OLS(y,x) # creating the model
-ols_fit = ols_model.fit() # rebalancing the model
+## Split data into train and test 
+x_train = x.loc[:'20161231']
+x_test = x.loc['20170131':]
+
+y_train = y.loc[:'20161231']
+y_test = y.loc['20170131':]
+
+
+ols_modelmm = sm.OLS(y_train,x_train) # creating the model
+ols_fitmm = ols_modelmm.fit() # rebalancing the model
 
 # Print OLS summary
-print(ols_fit.summary())
+print(ols_fitmm.summary())
 
 # Not sure how to make this qqplot bigger
-sm.qqplot(ols_fit.resid, fit=True, line='45')
+sm.qqplot(ols_fitmm.resid, fit=True, line='45')
 plt.show()
 
 
+## Convert all the columns to y/y% change
+dyy = data.pct_change(4)[4:]
 
+y = dyy['nat_gas'][1:]
+x = dyy.loc[:,dyy.columns != 'nat_gas'].shift().dropna()
+
+# Add a constant with most of your regressions
+x = sm.add_constant(x)
+
+## Split data into train and test 
+x_train = x.loc[:'20161231']
+x_test = x.loc['20170131':]
+
+y_train = y.loc[:'20161231']
+y_test = y.loc['20170131':]
+
+
+ols_modelyy = sm.OLS(y_train,x_train) # creating the model
+ols_fityy = ols_modelyy.fit() # rebalancing the model
+
+# Print OLS summary
+print(ols_fityy.summary())
+
+# Not sure how to make this qqplot bigger
+sm.qqplot(ols_fityy.resid, fit=True, line='45')
+plt.show()
