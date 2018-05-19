@@ -12,13 +12,11 @@ from urllib.request import urlopen
 import datetime
 from pymongo import MongoClient
 
-#this is a local host for now and will be updated with mlab credentials
+#this is a local host mongo connection for now and will be updated with mlab credentials after prod code is developed
 client=MongoClient('localhost',81)
 db=client['commodities']
-values=db['values']
 
 api = 'd88caf37dd5c4619bad28016ca4f0379'
-    
     ## URL to pull data from EIA.gov
 url = 'http://api.eia.gov/series/?api_key='+api+'&series_id='
     ########### WTI Spot Prices ###############
@@ -27,17 +25,18 @@ url = 'http://api.eia.gov/series/?api_key='+api+'&series_id='
 #    wti_m = quandl.get('EIA/PET_RWTC_M') # monthly
     ###########################################
 
-#simple daily scenario first... resultset from quandl is a df
-oil=quandl.get('EIA/PET_RWTC_D')    
-updateMongo(oil,'oil_val')
 
-gf=oil.index.to_pydatetime()
-oil.set_index(gf,inplace=True)
 
-oil_dic=oil.to_dict(orient='index')
+###### buildout code, to be scrapped ######
+## gf=oil.index.to_pydatetime()
+## oil.set_index(gf,inplace=True)
+## oil_dic=oil.to_dict(orient='index')
+#############################################
 
-def updateMongo(df,val_field):
+def updateMongoDaily(df,val_field):
     #val_field must be a string: represents the field name for the observation, ie "ng_daily"
+    #point towards the appropriate collection in the mongo db
+    values=db['values']
     #convert index to datetime from np.datetime64
     gf=df.index.to_pydatetime()
     df.set_index(gf,inplace=True)
@@ -48,19 +47,35 @@ def updateMongo(df,val_field):
         # "Value" below is compatible for quandl, and may need to be amended for EIA data
         dic={'day_timestamp':key,val_field:val['Value']}
         values.update_one({'day_timestamp':key},{"$set":dic},upsert=True)
-    
-ng_df=quandl.get('EIA/NG_RNGWHHD_D')   
-updateMongo(ng_df,'nb_val') 
-gf=ng_df.index.to_pydatetime()
-ng_df.set_index(gf,inplace=True)
-ng_dic=ng_df.to_dict(orient='index')
-#fecha=datetime.datetime.strptime('2018-05-09',"%Y-%m-%d")
-#testy[fecha]['Value']
 
-for key, val in ng_dic.items():
-    values.update_one({'day_timestamp':key},{"$set":{'ng_daily_val':val['Value']}},upsert=True)
-#subsequent updates make want to include the upsert=true parameter, so that if there is no record, do not update
-    
+#simple daily scenario first... resultset from quandl is a df
+oil=quandl.get('EIA/PET_RWTC_D')        
+ng_df=quandl.get('EIA/NG_RNGWHHD_D')   
+
+updateMongoDaily(ng_df,'nb_val') 
+updateMongoDaily(oil,'oil_val')
+
+def updateMongoMonthly(df,val_field):
+    #val_field must be a string: represents the field name for the observation, ie "ng_daily"
+    #point towards the appropriate collection in the mongo db
+    values=db['monthlyvalues']
+    #convert index to datetime from np.datetime64
+    gf=df.index.to_pydatetime()
+    df.set_index(gf,inplace=True)
+    #convert to a json like python dictionary
+    df_dic=df.to_dict(orient='index')
+    #iterate through the dictionary making updates to the mongodb
+    for key, val in df_dic.items():
+        # "Value" below is compatible for quandl, and may need to be amended for EIA data
+        dic={'month_timestamp':key,val_field:val['Value']}
+        values.update_one({'month_timestamp':key},{"$set":dic},upsert=True)
+
+
+oil_mo=quandl.get('EIA/PET_RWTC_M')
+ng_mo=quandl.get('EIA/NG_RNGWHHD_W')
+
+updateMongoMonthly(ng_mo,'nb_val') 
+updateMongoMonthly(oil_mo,'oil_val')
 
 def getData(sym='o',freq='d',eco=0):
    
