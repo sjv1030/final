@@ -222,8 +222,3 @@ def getData(sym='o',freq='d',eco=0):
                 df.set_index('Date',drop=True,inplace=True)
                 updateMongoMonthly(df,k[:-3])
                 #db update: ng_data['netbal'] = ng_data['prod'] - ng_data['cons']
-                
-                
-
-
-            
