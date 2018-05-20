@@ -9,7 +9,6 @@ import pandas as pd
 import quandl
 import json
 from urllib.request import urlopen
-import datetime
 from pymongo import MongoClient
 
 #this is a local host mongo connection for now and will be updated with mlab credentials after prod code is developed
@@ -26,13 +25,6 @@ url = 'http://api.eia.gov/series/?api_key='+api+'&series_id='
     ###########################################
 
 
-
-###### buildout code, to be scrapped ######
-## gf=oil.index.to_pydatetime()
-## oil.set_index(gf,inplace=True)
-## oil_dic=oil.to_dict(orient='index')
-#############################################
-
 def updateMongoDaily(df,val_field):
     #val_field must be a string: represents the field name for the observation, ie "ng_daily"
     #point towards the appropriate collection in the mongo db
@@ -48,13 +40,6 @@ def updateMongoDaily(df,val_field):
         dic={'day_timestamp':key,val_field:val['Value']}
         values.update_one({'day_timestamp':key},{"$set":dic},upsert=True)
 
-#simple daily scenario first... resultset from quandl is a df
-oil=quandl.get('EIA/PET_RWTC_D')        
-ng_df=quandl.get('EIA/NG_RNGWHHD_D')   
-
-updateMongoDaily(ng_df,'nb_val') 
-updateMongoDaily(oil,'oil_val')
-
 def updateMongoMonthly(df,val_field):
     #val_field must be a string: represents the field name for the observation, ie "ng_daily"
     #point towards the appropriate collection in the mongo db
@@ -69,13 +54,24 @@ def updateMongoMonthly(df,val_field):
         # "Value" below is compatible for quandl, and may need to be amended for EIA data
         dic={'month_timestamp':key,val_field:val['Value']}
         values.update_one({'month_timestamp':key},{"$set":dic},upsert=True)
+        
+        
+def updateMongoWeekly(df,val_field):
+    #val_field must be a string: represents the field name for the observation, ie "ng_daily"
+    #point towards the appropriate collection in the mongo db
+    values=db['weeklyvalues']
+    #convert index to datetime from np.datetime64
+    gf=df.index.to_pydatetime()
+    df.set_index(gf,inplace=True)
+    #convert to a json like python dictionary
+    df_dic=df.to_dict(orient='index')
+    #iterate through the dictionary making updates to the mongodb
+    for key, val in df_dic.items():
+        # "Value" below is compatible for quandl, and may need to be amended for EIA data
+        dic={'week_timestamp':key,val_field:val['Value']}
+        values.update_one({'week_timestamp':key},{"$set":dic},upsert=True)        
 
 
-oil_mo=quandl.get('EIA/PET_RWTC_M')
-ng_mo=quandl.get('EIA/NG_RNGWHHD_W')
-
-updateMongoMonthly(ng_mo,'nb_val') 
-updateMongoMonthly(oil_mo,'oil_val')
 
 def getData(sym='o',freq='d',eco=0):
    
@@ -97,14 +93,18 @@ def getData(sym='o',freq='d',eco=0):
         if sym == 'o':
             # if frequency == 'w', then return weekly oil spot prices
             if freq == 'w':
-                return quandl.get('EIA/PET_RWTC_W')
+                wtc_weekly=quandl.get('EIA/PET_RWTC_W')
+                updateMongoWeekly(wtc_weekly,'wtc_val')
             # if frequency == 'm', then return monthly oil spot prices
             elif freq == 'm':
-                return quandl.get('EIA/PET_RWTC_M')
+                #removed the return statement
+                wtc_m=quandl.get('EIA/PET_RWTC_M')
+                updateMongoMonthly(wtc_m,'wtc_val')
             # else return daily oil spot prices
             else:
                 #conver the result set to json and insert into the database
-                return quandl.get('EIA/PET_RWTC_D')
+                wtc_d=quandl.get('EIA/PET_RWTC_D')
+                updateMongoDaily(wtc_d,'wtc_val')
     
     ########## Nat Gas Spot Prices ############
 #    ng_d = quandl.get('EIA/NG_RNGWHHD_D') # daily
@@ -116,19 +116,24 @@ def getData(sym='o',freq='d',eco=0):
         if sym == 'ng':
             # if frequency == 'w', then return weekly nat gas spot prices
             if freq == 'w':
-                return quandl.get('EIA/NG_RNGWHHD_W')
+                ng_w=quandl.get('EIA/NG_RNGWHHD_W')
+                updateMongoWeekly(ng_w,'ng_val')
             # if frequency == 'm', then return monthly nat gas spot prices
             elif freq == 'm':
-                return quandl.get('EIA/NG_RNGWHHD_M')
+                ng_m=quandl.get('EIA/NG_RNGWHHD_M')
+                updateMongoMonthly(ng_m,'ng_val')
             # else return daily nat gas spot prices
             else:
-                return quandl.get('EIA/NG_RNGWHHD_D') 
+                ng_d=quandl.get('EIA/NG_RNGWHHD_D') 
+                updateMongoDaily(ng_d,'ng_val')
     
     # if eco == 1, then return data with eco data
     if eco == 1:
         ########## US Economic Data ################
         twd_m = quandl.get('FRED/TWEXBMTH') # monthly trade-weighted dollar index
+        updateMongoMonthly(twd_m,'twd_val')
         ip = quandl.get('FRED/IPB50001N') # monthly US industrial production
+        updateMongoMonthly(ip,'ip_val')
         econ_m = pd.concat([twd_m, ip], join='inner', axis=1)
         econ_m.columns = ['twd','ip']
         econ_m.index = econ_m.index.to_period('M').to_timestamp('M')
@@ -161,38 +166,24 @@ def getData(sym='o',freq='d',eco=0):
                        'inv_id':'PET.MCESTUS1.M',
                        }
             
-            # monthly oil spot prices
-            wti_m = quandl.get('EIA/PET_RWTC_M') 
-            
-            ## Dictionary to save data
-            oil_data_dict = {}
             
             ## Loop through series dictionary, pull down data,
             ## make necessary adjustments, then save to data dictionary
             for k, v in oil_ids.items():
                 dat = urlopen(url+v).read()
                 data = json.loads(dat.decode())
-                
                 df = pd.DataFrame(data['series'][0]['data'],
-                                   columns=['Date',k[:-3]])
+                                   columns=['Date','Value'])
+                df['Value']=df['Value'].astype('float64')
                 df.set_index('Date',drop=True,inplace=True)
-                df.sort_index(inplace=True)  
-                oil_data_dict[k[:-3]] = df
+                updateMongoMonthly(df,k[:-3])
+                
             
-            ## Create dataframe combining all monthly data series
-            oil_data = pd.DataFrame()
-            for v in oil_data_dict.values():
-                oil_data = pd.concat([oil_data, v], axis=1)
+            ## Create dataframe combining all monthly data series... this step can be skipped... as no need for consolidation bc database
             
-            oil_data['tot_supply'] = oil_data['prod'] + oil_data['import']
-            oil_data.index = pd.to_datetime(oil_data.index+'01')
-            oil_data.index = oil_data.index.to_period('M').to_timestamp('M')
+            #can be a mongo update script
+            #oil_data['tot_supply'] = oil_data['prod'] + oil_data['import']
             
-            oil_data = pd.concat([oil_data,wti_m], join='inner', axis=1)
-            oil_data.rename(columns={'Value':'wti'},inplace=True)
-            oil_data = pd.concat([oil_data, econ_m], join='inner', axis=1)
-            
-            return oil_data
             
         # if sym == 'ng', then return nat gas spot prices with eco data
         if sym == 'ng':
@@ -211,48 +202,28 @@ def getData(sym='o',freq='d',eco=0):
     
             ## Dictionaries to loop through when pulling down data
             ng_ids = {
-                    'rig_id':'PET.E_ERTRRG_XR0_NUS_C.M',
-                    'prod_id':'NG.N9070US2.M',
-                    'cons_id':'NG.N9140US1.M',      
+                    'ng_rig_id':'PET.E_ERTRRG_XR0_NUS_C.M',
+                    'ng_prod_id':'NG.N9070US2.M',
+                    'ng_cons_id':'NG.N9140US1.M',      
                     }
-            
-            # monthly nat gas spot prices
-            ng_m = quandl.get('EIA/NG_RNGWHHD_M')
-    
-            ## Dictionary to save data
-            ng_data_dict = {}
     
             ## Loop through series dictionary, pull down data,
             ## make necessary adjustments, then save to data dictionary    
             for k, v in ng_ids.items():
                 dat = urlopen(url+v).read()
                 data = json.loads(dat.decode())
-                
+                #converts a list to a dataframe & assigns column names
                 df = pd.DataFrame(data['series'][0]['data'],
-                                   columns=['Date',k[:-3]])
-                
-                df.set_index('Date',drop=True,inplace=True)
-                df.sort_index(inplace=True)
-                
+                                   columns=['Date','Value'])
+                df['Value']=df['Value'].astype('float64')
                 # Make nat gas prod same units as nat gas consumption -- billion cubic feet
-                if k[:-3] == 'prod':
+                if k[:-3] == 'ng_prod':
                     df = df/1000
-                ng_data_dict[k[:-3]] = df
-
-    
-            ## Create dataframe combining all monthly data series
-            ng_data = pd.DataFrame()
-            for v in ng_data_dict.values():
-                ng_data = pd.concat([ng_data, v], axis=1)
+                df.set_index('Date',drop=True,inplace=True)
+                updateMongoMonthly(df,k[:-3])
+                #db update: ng_data['netbal'] = ng_data['prod'] - ng_data['cons']
                 
-            ng_data.dropna(inplace=True)
-            ng_data['netbal'] = ng_data['prod'] - ng_data['cons']
-            ng_data.index = pd.to_datetime(ng_data.index+'01')
-            ng_data.index = ng_data.index.to_period('M').to_timestamp('M')
-            
-            ng_data = pd.concat([ng_data,ng_m], join='inner', axis=1)
-            ng_data.rename(columns={'Value':'nat_gas'},inplace=True)
-            ng_data = pd.concat([ng_data, econ_m], join='inner', axis=1)
-            
-            return ng_data
+                
 
+
+            
