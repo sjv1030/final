@@ -13,6 +13,8 @@ import pandas as pd
 import quandl
 import json
 from urllib.request import urlopen
+from pymongo import MongoClient
+import datetime
 
 ###################################
 ## This is supposed  to be imported
@@ -218,6 +220,18 @@ def getData(sym='o',freq='d',eco=0):
             
 ## Get data
 data = getData(sym='ng',freq='m',eco=1)
+
+## replace the legacy get_data call with a query to the mlab database
+#this is a connection to a locally hosted mongo for now and will be updated with mlab credentials after prod code is developed
+client=MongoClient('localhost',81)
+db=client['commodities']
+
+values=db['monthlyvalues']
+test=values.find({'month_timestamp':{'$gt':datetime.datetime.strptime("2011-01-01","%Y-%m-%d")},
+'oil_val':{'$exists':True}},{'_id':0,'month_timestamp':1,'oil_val':1}).limit(5)
+test_df=pd.DataFrame(list(test))
+    
+
 
 ## Convert all the columns to m/m% change
 dmm = data.pct_change()[1:]
