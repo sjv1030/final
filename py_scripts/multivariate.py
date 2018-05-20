@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
 
-from py_scripts import get_Data_old
+import get_Data_old
 
 ## Get data
 data = get_Data_old.getData(sym='ng',freq='m',eco=1)
