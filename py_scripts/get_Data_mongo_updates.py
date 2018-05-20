@@ -9,11 +9,24 @@ import pandas as pd
 import quandl
 import json
 from urllib.request import urlopen
-from pymongo import MongoClient
+from pymongo import MongoClient, errors
 
 #this is a local host mongo connection for now and will be updated with mlab credentials after prod code is developed
-client=MongoClient('localhost',81)
-db=client['commodities']
+#client=MongoClient('localhost',81)
+#db=client['commodities']
+
+
+try:
+    client=MongoClient('mongodb://team_nyc:persyy@ds229450.mlab.com:29450/commodities',serverSelectionTimeoutMS=3000)
+    client.server_info()
+    db=client.commodities
+except errors.ServerSelectionTimeoutError as err:
+            #try to connect one more time
+    print('trying to connect one more time')
+    client=MongoClient('mongodb://team_nyc:persyy@ds229450.mlab.com:29450/commodities',serverSelectionTimeoutMS=7000)
+    db=client.commodities
+
+
 
 api = 'd88caf37dd5c4619bad28016ca4f0379'
     ## URL to pull data from EIA.gov
