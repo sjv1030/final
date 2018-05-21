@@ -31,8 +31,9 @@ db=client.commodities
 
 #query ng data from mongo
 values=db['values']
-test=values.find({'ng_val':{'$exists':True}},{'_id':0,'week_timestamp':1,'ng_val':1})
+test=values.find({'ng_val':{'$exists':True}},{'_id':0,'day_timestamp':1,'ng_val':1})
 ng_daily_df=pd.DataFrame(list(test))
+ng_daily_df.head()
 
 '''Variable creation and analysis - ARMA, regression'''
 #calculate the volatility regressors; type: close-to-close volatility
@@ -45,9 +46,13 @@ ratio=ng_daily_df['ng_val']/shifted
 ng_daily_df['log_vec']=np.log(temp)
 ng_daily_df['roll_10']=ng_daily_df['log_vec'].rolling(9).mean()
 test=(ng_daily_df['log_vec']-ng_daily_df['roll_10'])**2
+test.head(20)
 gy=test.rolling(9).sum()
+gy.head(12)
 #close-to-close volatility array
 yu=np.sqrt((254.5/8)*gy)
+yu.head(35)
+np.nanmean(yu.values)
 
 #volatility is only positive an is not an ARMA process, unless it is scaled... nonetheless a regression can be run on volatility to determine some levels for scenario testing, and perhaps fit a probability distribution
 plt.close()
@@ -192,20 +197,19 @@ res2.maparams
 
 
 
-test_yr=oil_df['day_timestamp'].apply(lambda x: x.year).values
-sum(test_yr==2017)
-sum(test_yr==2014)
-#10 day rolling volatility
-mean=sum(log_vec[1:])/(len(log_vec)-1)
-sum((log_vec[1:]-mean)**2)
-
 #can calculate a rolling mean as an input
 
 #the dependent variable field is to labeled 'y'; datetime field labeled 'ds'
 #instantiate the prophet object
 ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15)
-oil_df.dtypes
-fb_version=oil_df.rename(columns={'day_timestamp':'ds','oil_val':'y'})
+ng_daily_df.dtypes
+ng_daily_df.head()
+fb_version=ng_daily_df.rename(columns={'day_timestamp':'ds','ng_val':'y'})
+
+#add regressor... optimally this would be standardized
+good=yu[~np.isnan(yu)]
+fb_good=fb_version.loc[~np.isnan(yu),:]
+ts_prophet.add_regressor(yu)
 fb_version.head()
 train=fb_version.iloc[:-75,:]
 test=fb_version.iloc[-75:,:]
