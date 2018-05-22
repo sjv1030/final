@@ -21,6 +21,7 @@ from statsmodels.tsa.stattools import adfuller
 from statsmodels.graphics.tsaplots import plot_acf
 from statsmodels.graphics.tsaplots import plot_pacf
 from statsmodels.tsa.arima_model import ARMA
+from sklearn import preprocessing
 #local mongo
 #client=MongoClient('localhost',81)
 #db=client['commodities']
@@ -32,31 +33,73 @@ db=client.commodities
 #query ng data from mongo
 values=db['values']
 test=values.find({'ng_val':{'$exists':True}},{'_id':0,'day_timestamp':1,'ng_val':1})
+
 ng_daily_df=pd.DataFrame(list(test))
-ng_daily_df.head()
+ng_daily_df.tail()
+#sort the dataframe
+ng_daily_df.sort_values('day_timestamp',axis=0,ascending=True,inplace=True)
 
 '''Variable creation and analysis - ARMA, regression'''
 #calculate the volatility regressors; type: close-to-close volatility
 #method 1
 temp=ng_daily_df['ng_val'].pct_change().values+1
 #method 2
-shifted=ng_daily_df['ng_val'].shift(1)
-ratio=ng_daily_df['ng_val']/shifted
+#shifted=ng_daily_df['ng_val'].shift(1)
+#ratio=ng_daily_df['ng_val']/shifted
 #log conversion... would get an approximation to this just by calling percent_change() pandas method
 ng_daily_df['log_vec']=np.log(temp)
 ng_daily_df['roll_10']=ng_daily_df['log_vec'].rolling(9).mean()
 test=(ng_daily_df['log_vec']-ng_daily_df['roll_10'])**2
-test.head(20)
 gy=test.rolling(9).sum()
-gy.head(12)
 #close-to-close volatility array
 yu=np.sqrt((254.5/8)*gy)
-yu.head(35)
-np.nanmean(yu.values)
+#on any given rolling 20-day period, stratify/bin the observations in 1.09488-point ranges
+np.amax(yu)
+yu[0:30]
+good=yu[~np.isnan(yu)]
+def rolling_apply(ser,window):
+    bins=np.array([0.0,1.09,2.18,3.27,5.5])
+    i=np.arange(ser.shape[0]+1-window)
+    #results=np.zeros(ser.shape[0])
+    results=[]
+    for g in i:
+        #results[g+window-1]=np.digitize(ser[g:window+g],bins)
+        results.append(np.digitize(ser[g:window+g],bins))
+    return(results)
+    
+test=rolling_apply(good,30)
 
-#volatility is only positive an is not an ARMA process, unless it is scaled... nonetheless a regression can be run on volatility to determine some levels for scenario testing, and perhaps fit a probability distribution
+def dic_counters(lista):
+    master=[]
+    for i in lista:
+        #counter={1:0,2:0,3:0,4:0,5:0}    
+        master.append(np.bincount(i))
+    return(master)
+        
+gh=dic_counters(test)
+gh[-20:]
+
+#loop through each element in the list and augment a dictionary of counters for each bin
+
+#volatility is only positive an is not an ARMA process, unless it is scaled/standardized... nonetheless a regression can be run on volatility to determine some levels for scenario testing, and perhaps fit a probability distribution
 plt.close()
-plt.plot(ng_daily_df.index.values,yu)
+plt.plot(ng_daily_df.index.values[-400:],yu[-400:])
+plt.title('rolling 9-day volatility')
+plt.show()
+
+plot_pacf(yu[-200:])
+ad=adfuller(yu[-900:])
+ad
+plot_acf(yu[-900:],lags=20)
+
+#scaling
+yu_good=yu[~np.isnan(yu).values].values
+prep=yu_good.reshape(-1,1)
+yu_robust=preprocessing.robust_scale(prep)
+np.amax(yu_robust)
+#plot result
+plt.close()
+plt.plot(ng_daily_df.index.values[-5360:],yu_robust)
 plt.title('rolling 9-day volatility')
 plt.show()
 
@@ -201,31 +244,36 @@ res2.maparams
 
 #the dependent variable field is to labeled 'y'; datetime field labeled 'ds'
 #instantiate the prophet object
-ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15)
-ng_daily_df.dtypes
-ng_daily_df.head()
+ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15, interval_width=0.95)
 fb_version=ng_daily_df.rename(columns={'day_timestamp':'ds','ng_val':'y'})
-
+#ensure that we only select data where there is a volatility measure
+fb_version1=fb_version.loc[~np.isnan(yu),:]
 #add regressor... optimally this would be standardized
 good=yu[~np.isnan(yu)]
-fb_good=fb_version.loc[~np.isnan(yu),:]
-ts_prophet.add_regressor(yu)
-fb_version.head()
-train=fb_version.iloc[:-75,:]
-test=fb_version.iloc[-75:,:]
-
+fb_version1['volatility']=pd.Series(good)
+ts_prophet.add_regressor('volatility')
+train=fb_version1.iloc[-500:-35,]
+test=fb_version1.iloc[-35:,]
 #fit the model
 ts_prophet.fit(train)
-ts_forecast=ts_prophet.make_future_dataframe(periods=75,freq='D')
-#ts_forecast=ts_prophet.predict(ts_forecast)
-
+#just the date output... this serves as input to the predict() function
+ts_forecast=ts_prophet.make_future_dataframe(periods=35,freq='D'
+)
+#don't know if I'm passing the appropriate arguments here and above
+forecast_data=ts_prophet.predict(test)
 #plot the prediction
-plt.close()
-#plt.title('FB Prophet forecast on only price')
-ts_prophet.plot(ts_forecast,xlabel='Date', ylabel='MRO Price')
-plt.show()
 
-#a regressor model
+#plt.title('FB Prophet forecast on only price')
+ts_prophet.plot(forecast_data,xlabel='Date', ylabel='LNG Price')
+plt.close()
+plt.plot(forecast_data['ds'],forecast_data['yhat'],'-',color='red')
+plt.plot(ng_daily_df['day_timestamp'][-35:],ng_daily_df['ng_val'].iloc[-35:],'-',color='green')
+
+forecast_data['ds']
+ng_daily_df['day_timestamp']
+ng_daily_df.index.values[-100:]
+#overlay the actual values
+plt.show()
 
 
 
