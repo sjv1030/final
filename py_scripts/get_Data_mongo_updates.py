@@ -53,14 +53,20 @@ def updateMongoDaily(df,val_field):
         dic={'day_timestamp':key,val_field:val['Value']}
         values.update_one({'day_timestamp':key},{"$set":dic},upsert=True)
 
-def updateMongoMonthly(df,val_field):
+def updateMongoMonthly(df,val_field,econ=False):
     #val_field must be a string: represents the field name for the observation, ie "ng_daily"
     #point towards the appropriate collection in the mongo db
     values=db['monthlyvalues']
     #convert index to datetime from np.datetime64
-    gf=df.index.to_pydatetime()
-    df.set_index(gf,inplace=True)
+    if econ == False:
+        gf=df.index.to_pydatetime()
+        df.set_index(gf,inplace=True)
     #convert to a json like python dictionary
+    elif econ == True:
+        if str(type(df.index)) != "<class 'pandas.core.indexes.datetimes.DatetimeIndex'>":
+            df.index=df.index.values+'01'
+            df.index = pd.to_datetime(df.index)
+        df.index = df.index.to_period('M').to_timestamp('M')
     df_dic=df.to_dict(orient='index')
     #iterate through the dictionary making updates to the mongodb
     for key, val in df_dic.items():
@@ -144,12 +150,10 @@ def getData(sym='o',freq='d',eco=0):
     if eco == 1:
         ########## US Economic Data ################
         twd_m = quandl.get('FRED/TWEXBMTH') # monthly trade-weighted dollar index
-        updateMongoMonthly(twd_m,'twd_val')
+        updateMongoMonthly(twd_m,'twd_val',econ=True)
         ip = quandl.get('FRED/IPB50001N') # monthly US industrial production
-        updateMongoMonthly(ip,'ip_val')
-        econ_m = pd.concat([twd_m, ip], join='inner', axis=1)
-        econ_m.columns = ['twd','ip']
-        econ_m.index = econ_m.index.to_period('M').to_timestamp('M')
+        updateMongoMonthly(ip,'ip_val',econ=True)
+        
         ###########################################
         
         
@@ -160,7 +164,7 @@ def getData(sym='o',freq='d',eco=0):
 #            rig_id = 'PET.E_ERTRRO_XR0_NUS_C.M'
             ###########################################
             
-            ####### Monthly Oil Production ############
+            ####### index.to_period('M')Monthly Oil Production ############
 #            prod_id = 'PET.MCRFPUS1.M' # Field production
 #            import_id = 'PET.MCRIMUS1.M' # Imports
             ###########################################
@@ -189,7 +193,7 @@ def getData(sym='o',freq='d',eco=0):
                                    columns=['Date','Value'])
                 df['Value']=df['Value'].astype('float64')
                 df.set_index('Date',drop=True,inplace=True)
-                updateMongoMonthly(df,k[:-3])
+                updateMongoMonthly(df,k[:-3], econ=True)
                 
             
             ## Create dataframe combining all monthly data series... this step can be skipped... as no need for consolidation bc database
@@ -230,8 +234,8 @@ def getData(sym='o',freq='d',eco=0):
                                    columns=['Date','Value'])
                 df['Value']=df['Value'].astype('float64')
                 # Make nat gas prod same units as nat gas consumption -- billion cubic feet
-                if k[:-3] == 'ng_prod':
-                    df = df/1000
+                #if k[:-3] == 'ng_prod':
+                #    df = df/1000
                 df.set_index('Date',drop=True,inplace=True)
-                updateMongoMonthly(df,k[:-3])
+                updateMongoMonthly(df,k[:-3], econ=True)
                 #db update: ng_data['netbal'] = ng_data['prod'] - ng_data['cons']
