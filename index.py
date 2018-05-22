@@ -11,6 +11,11 @@ app.layout = html.Div([
     html.Div(id='page-content')
 ])
 
+index_page = html.Div([
+    dcc.Link('Natural Gas Anaysis', href='/apps/app_ng/overview'),
+    html.Br(),
+    dcc.Link('Oil Analysis', href='/apps/app_oil/overview'),
+])
 
 @app.callback(Output('page-content', 'children'),
               [Input('url', 'pathname')])
@@ -21,8 +26,8 @@ def display_page(pathname):
         return app_ng.multivariable_ARIMA
     elif pathname == '/apps/app_ng/fb_prophet':
         return app_ng.fbProphet
-    elif pathname == '/apps/app_ng/RNN':
-        return app_ng.RNN
+    elif pathname == '/apps/app_ng/LSTM':
+        return app_ng.LSTM
     elif pathname == '/apps/app_ng/SVM':
         return app_ng.SVM
     elif pathname == '/apps/app_ng/takeaways':
@@ -39,7 +44,11 @@ def display_page(pathname):
         return app_oil.distributions
     elif pathname == '/apps/app_oil/news-and-reviews':
         return app_oil.newsReviews
+    elif pathname == "/":
+        index_page
     else:
         "404"
+
+
 if __name__ == '__main__':
     app.run_server(debug=True)

@@ -11,9 +11,10 @@ import plotly.graph_objs as go
 import pandas as pd
 import os
 import numpy as np
+import base64
 
 from app import app
-from py_scripts import multivariate_michele, descriptive_statistics
+from py_scripts import multivariate_michele, descriptive_statistics, LSTM
 
 #app = dash.Dash(__name__)
 #server = app.server
@@ -35,9 +36,13 @@ df_graph = pd.DataFrame({"Date": [1, 2, 3, 4], 'Vanguard 500 Index Fund': [2, 3,
 wti_d = pd.read_csv("py_data/ng_values.csv")
 wti_d_stats = pd.DataFrame({"label": ["Minimum", "Maximum", "Mean", "Standard Deviation", "Variance"],
                            "value": [float(wti_d["nat_gas"].min()), float(wti_d["nat_gas"].max()), int(wti_d["nat_gas"].mean()), int(wti_d["nat_gas"].std()), int(wti_d["nat_gas"].var())]})
+wti_d['Date'] =  pd.to_datetime(wti_d['Date'], infer_datetime_format=True)
 
 #multivatiate-ARIMA data
 data_silverio, residual_arima, plot_position_arima = multivariate_michele.ng_multivariable()
+
+# LSTM run
+LSTM_prediction, LSTM_future, LSTM_all_data, LSTM_residuals = LSTM.LSTM_prediction("ng")
 
 # get us economic data
 us_econ = pd.read_csv("py_data/us_econ.csv")
@@ -65,15 +70,21 @@ def print_button():
 
 # includes page/full view
 def get_logo():
+
+    image_directory =  os.getcwd() + "/"
+    image_filename = 'logo.png'
+    encoded_image = base64.b64encode(open(image_directory + image_filename, 'rb').read())
+
     logo = html.Div([
 
         html.Div([
-            html.Img(src='http://logonoid.com/images/vanguard-logo.png', height='40', width='160')
+            html.Img(src='https://raw.githubusercontent.com/sjv1030/data602-finalproject/master/logo.png?token=AbaIfbMXgUWBjbUl0XFIbJ5GhI9S_MHSks5bCjRRwA%3D%3D', height = 80, width = 120)
         ], className="ten columns padded"),
 
         html.Div([
-            dcc.Link('Full View   ', href='/full-view')
+            dcc.Link('Click Here for Oil Analysis   ', href='/apps/app_oil/overview')
         ], className="two columns page-view no-print")
+
 
     ], className="row gs-header")
     return logo
@@ -94,7 +105,7 @@ def get_menu():
         dcc.Link('Overview   ', href='/apps/app_ng/overview', className="tab first"),
         dcc.Link('ARIMA   ', href='/apps/app_ng/multivariable_ARIMA', className="tab"),
         dcc.Link('FB Prophet   ', href='/apps/app_ng/fb_prophet', className="tab"),
-        dcc.Link('Recurrent Neural Networks', href='/apps/app_ng/RNN', className="tab"),
+        dcc.Link('Long Short-Term Memory   ', href='/apps/app_ng/LSTM', className="tab"),
         dcc.Link('Support Vector Machine  ', href='/apps/app_ng/SVM', className="tab"),
         dcc.Link('Takeaways   ', href='/apps/app_ng/takeaways', className="tab")
     ], className="row ")
@@ -150,7 +161,7 @@ overview = html.Div([  # page 1
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x = wti_d.index,
+                                    x = wti_d['Date'],
                                     y = wti_d['nat_gas'],
                                     line = {"color": "rgb(53, 83, 255)"},
                                     mode = "lines")
@@ -326,7 +337,7 @@ multivariable_ARIMA = html.Div([  # page 2
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x = wti_d.index,
+                                    x = wti_d['Date'],
                                     y = wti_d['nat_gas'],
                                     line = {"color": "rgb(53, 83, 255)"},
                                     mode = "lines")
@@ -731,233 +742,180 @@ fbProphet = html.Div([ # page 3
 
     ], className="page")
 
-RNN = html.Div([  # page 4
+LSTM = html.Div([  # page 4
+print_button(),
 
-        print_button(),
+html.Div([
+
+    # Header
+    get_logo(),
+    get_header(),
+    html.Br([]),
+    get_menu(),
+    # Row 3
+    html.Div([
+        html.Div([
+            html.H6('Long Short Term Memory Summary',
+                    className="gs-header gs-text-header padded"),
+            html.Br([]),
+            html.P("\
+                    LSTM models were first created to help preserve the error that can \
+                    be backpropagated through time and layers. This addresses the \
+                    vanishing or exploding derivative problem present with RNN models \
+                    and they allow recurrent nets to learn many time steps over. Therefore,\
+                    LSTMs can learn outside the normal flow and “determine whether to let \
+                    new input in or erase the present data” or even whether to perform\
+                    addition or multiplication during the data transformation (DL4J). \
+                    Erasing data helps the neural network not not overfit our results,\
+                    bringing in new data and not forcing relationships between different\
+                     datasets that may not make much sense"),
+
+        ], className="six columns"),
 
         html.Div([
+            html.H6(["Natural Gas Spot Data Statistics"],
+                    className="gs-header gs-table-header padded"),
+            html.Table(make_dash_table(wti_d_stats))
+        ], className="six columns"),
 
-            # Header
+    ], className="row "),
 
-            get_logo(),
-            get_header(),
-            html.Br([]),
-            get_menu(),
+    # Row 4
 
-            # Row 1
+    html.Div([
+        html.Div([
+            html.H6('Natural Gas Spot Predicted Using LSTM',
+                    className="gs-header gs-text-header padded"),
+            dcc.Graph(
+                id = "graph-1",
+                figure={
+                    'data': [
+                        go.Scatter(
+                            x = wti_d['Date'],
+                            y = wti_d['nat_gas'],
+                            line = {"color": "rgb(53, 83, 255)"},
+                            mode = "lines",
+                            name = 'Actual'),
+                        go.Scatter(
+                            x = LSTM_future['Date'],
+                            y = LSTM_future['nat_gas'],
+                            line = {"color": "rgb(0, 0, 0)"},
+                            mode = "lines",
+                            name = 'Predicted')
+                    ],
+                    'layout': go.Layout(autosize = False,
+                    title = "",
+                    font = {"family": "Raleway","size": 10},
+                    height = 200,
+                    width = 340,
+                    hovermode = "closest",
+                    legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
+                    margin = {
+                      "r": 20,
+                      "t": 20,
+                      "b": 20,
+                      "l": 50
+                    },
+                )
+                },
+                config={
+                    'displayModeBar': False
+                }
+            )
+        ], className="six columns"),
 
-            html.Div([
+        html.Div([
+            html.H6("Residual Plot",
+                    className="gs-header gs-table-header padded"),
+            dcc.Graph(
+                id="graph-2",
+                figure={
+                    'data': [
+                        go.Scatter(
+                            x = np.arange(-2, 4, len(range(-2, 4))/len(LSTM_residuals)),
+                            y = LSTM_residuals,
+                            line = {"color": "rgb(53, 83, 255)"},
+                            mode = "markers")
+                    ],
+                    'layout': go.Layout(autosize = False,
+                    title = "",
+                    font = {"family": "Raleway","size": 10},
+                    height = 200,
+                    width = 340,
+                    hovermode = "closest",
+                    margin = {
+                      "r": 20,
+                      "t": 20,
+                      "b": 20,
+                      "l": 50
+                    },
+                )
+                },
+                config={
+                    'displayModeBar': False
+                }
+            )
+        ], className="six columns"),
+    ], className="row "),
 
-                html.Div([
-                    html.H6(["Expenses"],
-                            className="gs-header gs-table-header padded")
-                ], className="twelve columns"),
-
-            ], className="row "),
-
-            # Row 2
-
-            html.Div([
-
-                html.Div([
-                    html.Strong(),
-                    html.Table(make_dash_table(df_expenses)),
-                    html.H6(["Minimums"],
-                            className="gs-header gs-table-header padded"),
-                    html.Table(make_dash_table(df_minimums))
-                ], className="six columns"),
-
-                html.Div([
-                    html.Br([]),
-                    html.Strong("Fees on $10,000 invested over 10 years"),
-                    dcc.Graph(
-                        id = 'graph-6',
-                        figure = {
-                            'data': [
-                                go.Bar(
-                                    x = ["Category Average", "This fund"],
-                                    y = ["2242", "329"],
-                                    marker = {"color": "rgb(53, 83, 255)"},
-                                    name = "A"
-                                ),
-                                go.Bar(
-                                    x = ["This fund"],
-                                    y = ["1913"],
-                                    marker = {"color": "#ADAAAA"},
-                                    name = "B"
-                                )
-                            ],
-                            'layout': go.Layout(
-                                annotations = [
-                                    {
-                                      "x": -0.0111111111111,
-                                      "y": 2381.92771084,
-                                      "font": {
-                                        "color": "rgb(0, 0, 0)",
-                                        "family": "Raleway",
-                                        "size": 10
-                                      },
-                                      "showarrow": False,
-                                      "text": "$2,242",
-                                      "xref": "x",
-                                      "yref": "y"
-                                    },
-                                    {
-                                      "x": 0.995555555556,
-                                      "y": 509.638554217,
-                                      "font": {
-                                        "color": "rgb(0, 0, 0)",
-                                        "family": "Raleway",
-                                        "size": 10
-                                      },
-                                      "showarrow": False,
-                                      "text": "$329",
-                                      "xref": "x",
-                                      "yref": "y"
-                                    },
-                                    {
-                                      "x": 0.995551020408,
-                                      "y": 1730.32432432,
-                                      "font": {
-                                        "color": "rgb(0, 0, 0)",
-                                        "family": "Raleway",
-                                        "size": 10
-                                      },
-                                      "showarrow": False,
-                                      "text": "You save<br><b>$1,913</b>",
-                                      "xref": "x",
-                                      "yref": "y"
-                                    }
-                                  ],
-                                  autosize = False,
-                                  height = 150,
-                                  width = 340,
-                                  bargap = 0.4,
-                                  barmode = "stack",
-                                  hovermode = "closest",
-                                  margin = {
-                                    "r": 40,
-                                    "t": 20,
-                                    "b": 20,
-                                    "l": 40
-                                  },
-                                  showlegend = False,
-                                  title = "",
-                                  xaxis = {
-                                    "autorange": True,
-                                    "range": [-0.5, 1.5],
-                                    "showline": True,
-                                    "tickfont": {
-                                      "family": "Raleway",
-                                      "size": 10
-                                    },
-                                    "title": "",
-                                    "type": "category",
-                                    "zeroline": False
-                                  },
-                                  yaxis = {
-                                    "autorange": False,
-                                    "mirror": False,
-                                    "nticks": 3,
-                                    "range": [0, 3000],
-                                    "showgrid": True,
-                                    "showline": True,
-                                    "tickfont": {
-                                      "family": "Raleway",
-                                      "size": 10
-                                    },
-                                    "tickprefix": "$",
-                                    "title": "",
-                                    "type": "linear",
-                                    "zeroline": False
-                                  }
-                            )
+    # Row 5
+    html.Div([
+        html.Div([
+            html.H6('Natural Gas Production Statistics',
+                    className="gs-header gs-table-header padded"),
+            html.Table(make_dash_table(ng_stats))
+        ], className="six columns"),
+        html.Div([
+            html.H6("Natural Gas Information",
+                    className="gs-header gs-table-header padded"),
+            dcc.Graph(
+                id='graph-3',
+                figure={
+                    'data': [
+                        go.Scatter(
+                            x=ng_data.index, # assign x as the dataframe column 'x'
+                            y=ng_data['rig'],
+                            name = 'Rigs'
+                        ),
+                        go.Scatter(
+                            x=ng_data.index, # assign x as the dataframe column 'x'
+                            y=ng_data['prod'],
+                            name = 'Production'
+                        ),
+                        go.Scatter(
+                            x=ng_data.index, # assign x as the dataframe column 'x'
+                            y=ng_data['cons'],
+                            name = 'Consumption'
+                        )
+                    ],
+                    'layout': go.Layout(
+                        autosize = False,
+                        title = "",
+                        font = {"family": "Raleway","size": 10},
+                        height = 200,
+                        width = 340,
+                        hovermode = "closest",
+                        legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
+                        margin = {
+                          "r": 20,
+                          "t": 20,
+                          "b": 20,
+                          "l": 50
                         },
-                        config={
-                            'displayModeBar': False
-                        }
+                        showlegend = True,
                     )
-                ], className="six columns"),
+                },
+                config={
+                    'displayModeBar': False
+                }
+            )
+        ], className="six columns"),
 
-            ], className="row "),
+    ], className="row ")
 
-            # Row 3
+], className="subpage")
 
-            html.Div([
-
-                html.Div([
-                    html.H6(["Fees"],
-                            className="gs-header gs-table-header padded"),
-
-                    html.Br([]),
-
-                    html.Div([
-
-                        html.Div([
-                            html.Strong(["Purchase fee"])
-                        ], className="three columns right-aligned"),
-
-                        html.Div([
-                            html.P(["None"])
-                        ], className="nine columns")
-
-
-                    ], className="row "),
-
-                    html.Div([
-
-                        html.Div([
-                            html.Strong(["Redemption fee"])
-                        ], className="three columns right-aligned"),
-
-                        html.Div([
-                            html.P(["None"])
-                        ], className="nine columns")
-
-                    ], className="row "),
-
-                    html.Div([
-
-                        html.Div([
-                            html.Strong(["12b-1 fee"])
-                        ], className="three columns right-aligned"),
-
-                        html.Div([
-                            html.P(["None"])
-                        ], className="nine columns")
-
-                    ], className="row "),
-
-                    html.Div([
-
-                        html.Div([
-                            html.Strong(["Account service fee"])
-                        ], className="three columns right-aligned"),
-
-                        html.Div([
-                            html.Strong(["Nonretirement accounts, traditional IRAs, Roth IRAs, UGMAs/UTMAs, SEP-IRAs, and education savings accounts (ESAs)"]),
-                            html.P(["We charge a $20 annual account service fee for each Vanguard Brokerage Account, as well as each individual Vanguard mutual fund holding with a balance of less than $10,000 in an account. This fee does not apply if you sign up for account access on vanguard.com and choose electronic delivery of statements, confirmations, and Vanguard fund reports and prospectuses. This fee also does not apply to members of Flagship Select™, Flagship®, Voyager Select®, and Voyager® Services."]),
-                            html.Br([]),
-                            html.Strong(["SIMPLE IRAs"]),
-                            html.P(["We charge participants a $25 annual account service fee for each fund they hold in their Vanguard SIMPLE IRA. This fee does not apply to members of Flagship Select, Flagship, Voyager Select, and Voyager Services."]),
-                            html.Br([]),
-                            html.Strong(["403(b)(7) plans"]),
-                            html.P(["We charge participants a $15 annual account service fee for each fund they hold in their Vanguard 403(b)(7) account. This fee does not apply to members of Flagship Select, Flagship, Voyager Select, and Voyager Services."]),
-                            html.Br([]),
-                            html.Strong(["Individual 401(k) plans"]),
-                            html.P(["We charge participants a $20 annual account service fee for each fund they hold in their Vanguard Individual 401(k) account. This fee will be waived for all participants in the plan if at least 1 participant qualifies for Flagship Select, Flagship, Voyager Select, and Voyager Services"]),
-                            html.Br([]),
-                        ], className="nine columns")
-
-                    ], className="row ")
-
-                ], className="twelve columns")
-
-            ], className="row "),
-
-        ], className="subpage")
-
-    ], className="page")
+], className="page")
 
 SVM = html.Div([  # page 5
 

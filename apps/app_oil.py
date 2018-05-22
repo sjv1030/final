@@ -9,6 +9,7 @@ import pandas as pd
 import os
 
 from app import app
+from apps import app_ng
 
 #app = dash.Dash(__name__)
 #server = app.server
@@ -53,11 +54,11 @@ def get_logo():
     logo = html.Div([
 
         html.Div([
-            html.Img(src='http://logonoid.com/images/vanguard-logo.png', height='40', width='160')
+            html.Img(src='https://raw.githubusercontent.com/sjv1030/data602-finalproject/master/logo.png?token=AbaIfbMXgUWBjbUl0XFIbJ5GhI9S_MHSks5bCjRRwA%3D%3D', height = 80, width = 120)
         ], className="ten columns padded"),
 
         html.Div([
-            dcc.Link('Full View   ', href='/full-view')
+            dcc.Link('Click here for Natural Gas Analysis  ', href='/apps/app_ng/overview')
         ], className="two columns page-view no-print")
 
     ], className="row gs-header")
