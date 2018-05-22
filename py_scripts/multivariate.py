@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed May 16 17:33:26 2018
-
 @author: sjv1030_hp
 """
 
@@ -193,5 +192,3 @@ ax.plot(predyy, label='Forecast', lw=3)
 ax.legend()
 ax.set_title('Forecast  of Y/Y% Values')
 plt.show()
-
-
