@@ -22,6 +22,7 @@ from statsmodels.graphics.tsaplots import plot_acf
 from statsmodels.graphics.tsaplots import plot_pacf
 from statsmodels.tsa.arima_model import ARMA
 from sklearn import preprocessing
+from itertools import compress, chain
 #local mongo
 #client=MongoClient('localhost',81)
 #db=client['commodities']
@@ -33,19 +34,23 @@ db=client.commodities
 #query ng data from mongo
 values=db['values']
 test=values.find({'ng_val':{'$exists':True}},{'_id':0,'day_timestamp':1,'ng_val':1})
-
 ng_daily_df=pd.DataFrame(list(test))
-ng_daily_df.tail()
 #sort the dataframe
 ng_daily_df.sort_values('day_timestamp',axis=0,ascending=True,inplace=True)
+
+#in lieu of mlab
+ng_daily_df=quandl.get('EIA/NG_RNGWHHD_D')
+ng_daily_df.reset_index(inplace=True)
+ng_daily_df.rename(columns={'Value':'ng_val','Date':'day_timestamp'},index=str,inplace=True)
+ng_daily_df.index=ng_daily_df.day_timestamp
+#finished with mlab formatting
+
+
 
 '''Variable creation and analysis - ARMA, regression'''
 #calculate the volatility regressors; type: close-to-close volatility
 #method 1
 temp=ng_daily_df['ng_val'].pct_change().values+1
-#method 2
-#shifted=ng_daily_df['ng_val'].shift(1)
-#ratio=ng_daily_df['ng_val']/shifted
 #log conversion... would get an approximation to this just by calling percent_change() pandas method
 ng_daily_df['log_vec']=np.log(temp)
 ng_daily_df['roll_10']=ng_daily_df['log_vec'].rolling(9).mean()
@@ -54,20 +59,175 @@ gy=test.rolling(9).sum()
 #close-to-close volatility array
 yu=np.sqrt((254.5/8)*gy)
 #on any given rolling 20-day period, stratify/bin the observations in 1.09488-point ranges
-np.amax(yu)
-yu[0:30]
+
+#the distribution by bin for each volatility scenario
+high_vol=[8,5,7,10]
+low_vol=[30]
+mid_vol=[15,10,5,0]
+
+def generateSamps(n,rango):
+    #a feeder function to the loop below... selects n number of random samples from the series of numbers contained in rango
+    array=np.linspace(rango[0],rango[1],100)
+    return(np.random.choice(array,size=n))
+
+rango_list=[(0.0,1.09),(1.09,2.18),(2.18,3.27),(3.27,5.5)]
+    
+'''the volatility values for each volatility scenario'''
+high_vol_list=[]
+for i,g in enumerate(high_vol,0):
+    high_vol_list.append(generateSamps(g,rango_list[i]))
+high_path=list(chain.from_iterable(high_vol_list))
+
+low_vol_list=[]
+for i,g in enumerate(low_vol,0):
+    low_vol_list.append(generateSamps(g,rango_list[i]))
+low_path=list(chain.from_iterable(low_vol_list))
+
+mid_vol_list=[]
+for i,g in enumerate(mid_vol,0):
+    mid_vol_list.append(generateSamps(g,rango_list[i]))
+mid_path=list(chain.from_iterable(mid_vol_list))
+
+#scramble/randomize the list a bit... place into dataframe with the appropriate dates
+high_path
+mid_path
+low_path
+
+
+def rearrangeDF(lista):
+    #randomize/scramble the input list and convert to pandas series
+    rango=np.arange(len(lista))
+    new_index=np.random.choice(rango,len(lista),replace=False)
+    return(np.Series([lista[i] for i in new_index]))
+
+#can feed this series into a function that concatenates this series with a datetime field to use as input for FBProphet.predict()
+rearrangeDF(high_path)
+#volatility is only positive an is not an ARMA process, unless it is scaled/standardized... nonetheless a regression can be run on volatility to determine some levels for scenario testing, and perhaps fit a probability distribution
+plt.close()
+plt.plot(ng_daily_df.index.values[-400:],yu[-400:])
+plt.title('rolling 9-day volatility')
+plt.show()
+
+plot_pacf(yu[-200:])
+ad=adfuller(yu[-900:])
+plot_acf(yu[-900:],lags=20)
+
+
+''' FBProphet '''
+#the dependent variable field is to be labeled 'y'; datetime field labeled 'ds'
+#data preparation
+fb_version=ng_daily_df.rename(columns={'day_timestamp':'ds','ng_val':'y'})
+#ensure that we only select data where there is a volatility measure
+fb_version1=fb_version.loc[~np.isnan(yu),:]
+#add regressor... optimally this would be standardized
+good=yu[~np.isnan(yu)]
+fb_version1['volatility']=pd.Series(good)
+#shift the volatility by 1 to offset values: only relevant volatility measure is the one the trader knows at time of action and that is the one which measurement period ended prior day
+fb_version1['volatility']=fb_version1['volatility'].shift(1)
+fb_version1.dropna(how='any',inplace=True)
+
+
+#instantiate the prophet object
+ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15, interval_width=0.95)
+ts_prophet.add_regressor('volatility')
+#will run on the entire dataset, as simulated values will be in the future as of t0
+train=fb_version1.iloc[-500,]
+#will be inserting simulated values
+test=fb_version1.iloc[-30:,]
+#fit the model
+ts_prophet.fit(train)
+#just the date output... this serves as input to the predict() function
+#don't know if I'm passing the appropriate arguments here and above
+forecast_data=ts_prophet.predict(test)
+#apply the forecast to the entire dataset... this way I have control over the output
+forecast_data_all=ts_prophet.predict(train)
+
+#plot the prediction
+fig, ax1 = plt.subplots()
+ax1.plot(train.ds[-30:,],train.y[-30:,],color='green')
+ax1.plot(train.ds[-30:],forecast_data_all.yhat[-30:], color='red')
+ax1.plot(forecast_data.ds,forecast_data.yhat, color='black', linestyle=':')
+ax1.fill_between(forecast_data.ds, forecast_data['yhat_upper'], forecast_data['yhat_lower'], alpha=1.5, color='darkgray')
+ax1.set_title('Sales (Orange) vs Sales Forecast (Black)')
+ax1.set_ylabel('Dollar Sales')
+ax1.set_xlabel('Date')
+plt.show()
+
+
+
+#run the FBProphet model on a parsimoneous dataset w/o a regressor
+ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15, interval_width=0.95)
+train=fb_version1.iloc[-500:-35,]
+ts_prophet.fit(train)
+future_data = ts_prophet.make_future_dataframe(periods=35, freq = 'd')
+simple_set=ts_prophet.predict(future_data)
+
+
+
+
+simple_set['yhat'][-35:-25]
+train['y'][-25:]
+ts_prophet.plot(simple_set)
+#concatenate both dataframes
+forecast_all=pd.concat([forecast_data_all,forecast_data])
+#append the prediction at the tail of the actual observations
+
+fig, ax1 = plt.subplots()
+ax1.plot(train.ds,train.y)
+ax1.plot(forecast_data.ds,forecast_data.yhat, color='black', linestyle=':')
+ax1.fill_between(forecast_data.ds, forecast_data['yhat_upper'], forecast_data['yhat_lower'], alpha=0.5, color='darkgray')
+ax1.set_title('Sales (Orange) vs Sales Forecast (Black)')
+ax1.set_ylabel('Dollar Sales')
+ax1.set_xlabel('Date')
+plt.show()
+    
+def plot_data(func_df, test_length):
+    #end_date = end_date - timedelta(weeks=4) # find the 2nd to last row in the data. We don't take the last row because we want the charted lines to connect
+    #mask = (func_df.index > end_date) # set up a mask to pull out the predicted rows of data.
+    #predict_df = func_df.loc[mask] # using the mask, we create a new dataframe with just the predicted data.
+   
+# Now...plot everything
+    fig, ax1 = plt.subplots()
+    ax1.plot(train.ds,train.y)
+    ax1.plot(forecast_data.ds,forecast_data.yhat, color='black', linestyle=':')
+    ax1.fill_between(forecast_data.ds, forecast_data['yhat_upper'], forecast_data['yhat_lower'], alpha=0.5, color='darkgray')
+    ax1.set_title('Sales (Orange) vs Sales Forecast (Black)')
+    ax1.set_ylabel('Dollar Sales')
+    ax1.set_xlabel('Date')
+  
+# change the legend text
+    L=ax1.legend() #get the legend
+    L.get_texts()[0].set_text('Actual Sales') #change the legend text for 1st plot
+    L.get_texts()[1].set_text('Forecasted Sales') #change the legend text for 2nd plot
+
+
+#plt.title('FB Prophet forecast on only price')
+ts_prophet.plot(forecast_data,xlabel='Date', ylabel='LNG Price')
+plt.close()
+plt.plot(forecast_data['ds'],forecast_data['yhat'],'-',color='red')
+plt.plot(ng_daily_df['day_timestamp'][-35:],ng_daily_df['ng_val'].iloc[-35:],'-',color='green')
+
+forecast_data['ds']
+ng_daily_df['day_timestamp']
+ng_daily_df.index.values[-100:]
+#overlay the actual values
+plt.show()
+
+'''some work towards developing the volatility scenarios'''
+#develop insight into the distribution of the realized volatility
 good=yu[~np.isnan(yu)]
 def rolling_apply(ser,window):
-    bins=np.array([0.0,1.09,2.18,3.27,5.5])
+    bins=np.array([1.09,2.18,3.27,5.5])
     i=np.arange(ser.shape[0]+1-window)
     #results=np.zeros(ser.shape[0])
     results=[]
     for g in i:
         #results[g+window-1]=np.digitize(ser[g:window+g],bins)
-        results.append(np.digitize(ser[g:window+g],bins))
+        results.append(np.digitize(ser[g:window+g],bins,right=True))
     return(results)
     
 test=rolling_apply(good,30)
+good[:30]
 
 def dic_counters(lista):
     master=[]
@@ -77,37 +237,23 @@ def dic_counters(lista):
     return(master)
         
 gh=dic_counters(test)
-gh[-20:]
+bools=[len(i) == 4 for i in gh]
+final=list(compress(gh,bools))
+suma=[sum(i) for i in final]
+''' end volatility scenario development '''
 
-#loop through each element in the list and augment a dictionary of counters for each bin
+#ARIMA models with a drift will be the basis for each MonteCarlo scenario
 
-#volatility is only positive an is not an ARMA process, unless it is scaled/standardized... nonetheless a regression can be run on volatility to determine some levels for scenario testing, and perhaps fit a probability distribution
-plt.close()
-plt.plot(ng_daily_df.index.values[-400:],yu[-400:])
-plt.title('rolling 9-day volatility')
-plt.show()
+#added regressor version
+ts_prophet.add_regressor('vol_15day')
 
-plot_pacf(yu[-200:])
-ad=adfuller(yu[-900:])
-ad
-plot_acf(yu[-900:],lags=20)
 
-#scaling
-yu_good=yu[~np.isnan(yu).values].values
-prep=yu_good.reshape(-1,1)
-yu_robust=preprocessing.robust_scale(prep)
-np.amax(yu_robust)
-#plot result
-plt.close()
-plt.plot(ng_daily_df.index.values[-5360:],yu_robust)
-plt.title('rolling 9-day volatility')
-plt.show()
+#model selection with mean absolute error and r-squared
+#cumulative sum of prediction errors: actual values and predicted
+sum(allo.apply(lambda x: x['yhat_vanilla']-x['actual'],axis=1))/allo.shape[0]
 
-# Variable #2: trade-weighted dollar
-twd_m = quandl.get('FRED/DTWEXM') 
-#twd detrending... with a quadratic regression:
-#inputs will be a sequence representation of the time series date values
 
+''' Additional regression techniques '''
 #the statsmodels method... preferable because it provides summary stats on the model unlike sklearn's regression function
 X = np.array([i for i in range(0, twd_m.shape[0])])
 x_sqrd = X**2
@@ -231,58 +377,3 @@ res2.maparams
 
 
 
-
-
-
-
-
-
-
-
-
-#can calculate a rolling mean as an input
-
-#the dependent variable field is to labeled 'y'; datetime field labeled 'ds'
-#instantiate the prophet object
-ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15, interval_width=0.95)
-fb_version=ng_daily_df.rename(columns={'day_timestamp':'ds','ng_val':'y'})
-#ensure that we only select data where there is a volatility measure
-fb_version1=fb_version.loc[~np.isnan(yu),:]
-#add regressor... optimally this would be standardized
-good=yu[~np.isnan(yu)]
-fb_version1['volatility']=pd.Series(good)
-ts_prophet.add_regressor('volatility')
-train=fb_version1.iloc[-500:-35,]
-test=fb_version1.iloc[-35:,]
-#fit the model
-ts_prophet.fit(train)
-#just the date output... this serves as input to the predict() function
-ts_forecast=ts_prophet.make_future_dataframe(periods=35,freq='D'
-)
-#don't know if I'm passing the appropriate arguments here and above
-forecast_data=ts_prophet.predict(test)
-#plot the prediction
-
-#plt.title('FB Prophet forecast on only price')
-ts_prophet.plot(forecast_data,xlabel='Date', ylabel='LNG Price')
-plt.close()
-plt.plot(forecast_data['ds'],forecast_data['yhat'],'-',color='red')
-plt.plot(ng_daily_df['day_timestamp'][-35:],ng_daily_df['ng_val'].iloc[-35:],'-',color='green')
-
-forecast_data['ds']
-ng_daily_df['day_timestamp']
-ng_daily_df.index.values[-100:]
-#overlay the actual values
-plt.show()
-
-
-
-#ARIMA models with a drift will be the basis for each MonteCarlo scenario
-
-#added regressor version
-ts_prophet.add_regressor('vol_15day')
-
-
-#model selection with mean absolute error and r-squared
-#cumulative sum of prediction errors: actual values and predicted
-sum(allo.apply(lambda x: x['yhat_vanilla']-x['actual'],axis=1))/allo.shape[0]

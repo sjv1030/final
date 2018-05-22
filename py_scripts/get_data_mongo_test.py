@@ -30,6 +30,9 @@ data.updateMongoMonthly(ng_m,'ng_val')
 ng_d=quandl.get('EIA/NG_RNGWHHD_D') 
 data.updateMongoDaily(ng_d,'ng_val')
 
+#daily twd
+twd_m = quandl.get('FRED/DTWEXM') 
+data.updateMongoDaily(ng_d,'twd_val')
 ###########
 #weekly oil
 wtc_weekly=quandl.get('EIA/PET_RWTC_W')
@@ -44,7 +47,12 @@ wtc_m=quandl.get('EIA/PET_RWTC_M')
 data.updateMongoMonthly(wtc_m,'oil_val')
 wtc_m.tail()
 
+test=df.index.values+'01'
+test[0:7]
+df.index=df.index.values+'01'
 
+lista=[]
+del(v)
 oil_ids = {'rig_id':'PET.E_ERTRRO_XR0_NUS_C.M',
                        'prod_id':'PET.MCRFPUS1.M',
                        'import_id':'PET.MCRIMUS1.M',
@@ -61,11 +69,22 @@ for k, v in oil_ids.items():
                                    columns=['Date','Value'])
     df['Value']=df['Value'].astype('float64')
     df.set_index('Date',drop=True,inplace=True)
-    df.index = pd.to_datetime(df.index+'01')
-    data.updateMongoMonthly(df,k[:-3])
+    
+#    df.index=df.index.values+'01'
+    #df.index = pd.to_datetime(df.index+'01')
+    data.updateMongoMonthly(df,k[:-3],econ=True)
+    #print(df.index.values[0:5])
+final_df=pd.concat(lista,axis=1)
 
 
-
+v='NG.N9070US2.M'
+dat = urlopen(url+v).read()
+dats = json.loads(dat.decode())
+                #converts a list to a dataframe & assigns column names
+df = pd.DataFrame(dats['series'][0]['data'],
+                                   columns=['Date','Value'])
+df['Value']=df['Value'].astype('float64')
+df.dtypes
 ng_ids = {
                     'ng_rig_id':'PET.E_ERTRRG_XR0_NUS_C.M',
                     'ng_prod_id':'NG.N9070US2.M',
@@ -83,10 +102,18 @@ for k, v in ng_ids.items():
     df['Value']=df['Value'].astype('float64')
                 # Make nat gas prod same units as nat gas consumption -- billion cubic feet
     if k[:-3] == 'ng_prod':
-        df = df/1000
+        df['Value'] = df['Value']/1000
     df.set_index('Date',drop=True,inplace=True)
-    data.updateMongoMonthly(df,k[:-3])
-                
+    data.updateMongoMonthly(df,k[:-3],econ=True)
+
+
+twd_m = quandl.get('FRED/TWEXBMTH') # monthly trade-weighted dollar index
+data.updateMongoMonthly(twd_m,'twd_val',econ=True)
+ip = quandl.get('FRED/IPB50001N') # monthly US industrial production
+data.updateMongoMonthly(ip,'ip_val',econ=True)
+
+str(type(twd_m.index)) == "<class 'pandas.core.indexes.datetimes.DatetimeIndex'>"
+
 ''' end of test '''
 
 oil_ids = {'rig_id':'PET.E_ERTRRO_XR0_NUS_C.M',
