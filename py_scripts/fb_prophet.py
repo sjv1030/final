@@ -98,7 +98,7 @@ def rearrangeDF(lista):
     #randomize/scramble the input list and convert to pandas series
     rango=np.arange(len(lista))
     new_index=np.random.choice(rango,len(lista),replace=False)
-    return(np.Series([lista[i] for i in new_index]))
+    return(pd.Series([lista[i] for i in new_index]))
 
 #can feed this series into a function that concatenates this series with a datetime field to use as input for FBProphet.predict()
 rearrangeDF(high_path)
@@ -107,11 +107,6 @@ plt.close()
 plt.plot(ng_daily_df.index.values[-400:],yu[-400:])
 plt.title('rolling 9-day volatility')
 plt.show()
-
-plot_pacf(yu[-200:])
-ad=adfuller(yu[-900:])
-plot_acf(yu[-900:],lags=20)
-
 
 ''' FBProphet '''
 #the dependent variable field is to be labeled 'y'; datetime field labeled 'ds'
@@ -131,21 +126,26 @@ fb_version1.dropna(how='any',inplace=True)
 ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15, interval_width=0.95)
 ts_prophet.add_regressor('volatility')
 #will run on the entire dataset, as simulated values will be in the future as of t0
-train=fb_version1.iloc[-500,]
-#will be inserting simulated values
-test=fb_version1.iloc[-30:,]
+train=fb_version1.iloc[-500:,]
 #fit the model
 ts_prophet.fit(train)
+#will be inserting simulated values
+#get path of interest rates
+date_df=ts_prophet.make_future_dataframe(periods=30, freq='d')
+ir=rearrangeDF(low_path)
+date_df['volatility']=train['volatility'].append(ir,ignore_index=True)
+
 #just the date output... this serves as input to the predict() function
 #don't know if I'm passing the appropriate arguments here and above
-forecast_data=ts_prophet.predict(test)
+forecast_data=ts_prophet.predict(date_df)
 #apply the forecast to the entire dataset... this way I have control over the output
-forecast_data_all=ts_prophet.predict(train)
+
+ts_prophet.plot(forecast_data)
 
 #plot the prediction
 fig, ax1 = plt.subplots()
 ax1.plot(train.ds[-30:,],train.y[-30:,],color='green')
-ax1.plot(train.ds[-30:],forecast_data_all.yhat[-30:], color='red')
+ax1.plot(train.ds[-30:],forecast_data.yhat[-30:], color='red')
 ax1.plot(forecast_data.ds,forecast_data.yhat, color='black', linestyle=':')
 ax1.fill_between(forecast_data.ds, forecast_data['yhat_upper'], forecast_data['yhat_lower'], alpha=1.5, color='darkgray')
 ax1.set_title('Sales (Orange) vs Sales Forecast (Black)')
