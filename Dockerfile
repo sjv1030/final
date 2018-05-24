@@ -5,9 +5,9 @@ FROM python:3.6
 
 #RUN apk add --update curl gcc g++ libpng freetype-dev
 
-RUN mkdir /hw3
+RUN mkdir /final
 
-WORKDIR /hw3
+WORKDIR /final
 
 # RUN pip install numpy pandas pymongo statsmodels flask bokeh json gdax sklearn
 
