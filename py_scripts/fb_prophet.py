@@ -19,14 +19,17 @@ from itertools import chain
 #db=client['commodities']
 
 #def runProphet(commmodity):
-def testRunProphet():
+def testRunProphet(sym='o'):
 #mlab
     client=MongoClient('mongodb://team_nyc:persyy@ds229450.mlab.com:29450/commodities',serverSelectionTimeoutMS=3000)
     db=client.commodities
-
+    
+    #select the asset
+    commodities={'ng':'ng_val','o':'oil_val'}
 #query ng data from mongo
+    selected=commodities[sym]
     values=db['values']
-    test=values.find({'ng_val':{'$exists':True}},{'_id':0,'day_timestamp':1,'ng_val':1})
+    test=values.find({selected:{'$exists':True}},{'_id':0,'day_timestamp':1,selected:1})
     ng_daily_df=pd.DataFrame(list(test))
     #sort the dataframe
     ng_daily_df.sort_values('day_timestamp',axis=0,ascending=True,inplace=True)
@@ -112,7 +115,7 @@ def testRunProphet():
     def prepDataSet(daily_df):
 #the dependent variable field is to be labeled 'y'; datetime field labeled 'ds'
 #data preparation
-        fb_version=daily_df.rename(columns={'day_timestamp':'ds','ng_val':'y'})
+        fb_version=daily_df.rename(columns={'day_timestamp':'ds',selected:'y'})
         fb_version['y']=np.log(fb_version['y'].values)
 #ensure that we only select data where there is a volatility measure
         #yu = realized historical volatility
@@ -154,7 +157,7 @@ def testRunProphet():
         result_set[k]=outcome
         
         #first two elements are the x,y inputs for the volatility graphs... the other three graphs contain the FB Prophet prediction and fit for each of the volatility scenarios
-    return ng_daily_df.index.values[-400:], yu[-400:], result_set['low path'], result_set['mid path'], result_set['high path']
+    return ng_daily_df.index.values[-400:], ng_daily_df.iloc[-400:,], yu[-400:], result_set['low path'], result_set['mid path'], result_set['high path']
 
 #all_paths={'high path':high_path,'mid path':mid_path,'low path':low_path}
     
