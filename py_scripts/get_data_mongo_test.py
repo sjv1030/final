@@ -183,65 +183,65 @@ for v in oil_data_dict.values():
     
     
             
-        # if sym == 'ng', then return nat gas spot prices with eco data
-        if sym == 'ng':
-    
-            ########### Monthly Rigs  #################
-#            rig_id = 'PET.E_ERTRRG_XR0_NUS_C.M'
-            ###########################################
-            
-            ###### Monthly Nat Gas Production #########
-#            prod_id = 'NG.N9070US2.M'
-            ###########################################
-            
-            ##### Monthly Nat Gas Consumption #########
-#            cons_id = 'NG.N9140US1.M'
-            ###########################################
-    
-            ## Dictionaries to loop through when pulling down data
-            ng_ids = {
-                    'rig_id':'PET.E_ERTRRG_XR0_NUS_C.M',
-                    'prod_id':'NG.N9070US2.M',
-                    'cons_id':'NG.N9140US1.M',      
-                    }
-            
-            # monthly nat gas spot prices
-            ng_m = quandl.get('EIA/NG_RNGWHHD_M')
-    
-            ## Dictionary to save data
-            ng_data_dict = {}
-    
-            ## Loop through series dictionary, pull down data,
-            ## make necessary adjustments, then save to data dictionary    
-            for k, v in ng_ids.items():
-                dat = urlopen(url+v).read()
-                data = json.loads(dat.decode())
-                
-                df = pd.DataFrame(data['series'][0]['data'],
-                                   columns=['Date',k[:-3]])
-                
-                df.set_index('Date',drop=True,inplace=True)
-                df.sort_index(inplace=True)
-                
-                # Make nat gas prod same units as nat gas consumption -- billion cubic feet
-                if k[:-3] == 'prod':
-                    df = df/1000
-                ng_data_dict[k[:-3]] = df
+    # if sym == 'ng', then return nat gas spot prices with eco data
+    if sym == 'ng':
 
-    
-            ## Create dataframe combining all monthly data series
-            ng_data = pd.DataFrame()
-            for v in ng_data_dict.values():
-                ng_data = pd.concat([ng_data, v], axis=1)
-                
-            ng_data.dropna(inplace=True)
-            ng_data['netbal'] = ng_data['prod'] - ng_data['cons']
-            ng_data.index = pd.to_datetime(ng_data.index+'01')
-            ng_data.index = ng_data.index.to_period('M').to_timestamp('M')
-            
-            ng_data = pd.concat([ng_data,ng_m], join='inner', axis=1)
-            ng_data.rename(columns={'Value':'nat_gas'},inplace=True)
-            ng_data = pd.concat([ng_data, econ_m], join='inner', axis=1)
-            
-            return ng_data
+        ########### Monthly Rigs  #################
+#            rig_id = 'PET.E_ERTRRG_XR0_NUS_C.M'
+        ###########################################
+
+        ###### Monthly Nat Gas Production #########
+#            prod_id = 'NG.N9070US2.M'
+        ###########################################
+
+        ##### Monthly Nat Gas Consumption #########
+#            cons_id = 'NG.N9140US1.M'
+        ###########################################
+
+        ## Dictionaries to loop through when pulling down data
+        ng_ids = {
+                'rig_id':'PET.E_ERTRRG_XR0_NUS_C.M',
+                'prod_id':'NG.N9070US2.M',
+                'cons_id':'NG.N9140US1.M',      
+                }
+
+        # monthly nat gas spot prices
+        ng_m = quandl.get('EIA/NG_RNGWHHD_M')
+
+        ## Dictionary to save data
+        ng_data_dict = {}
+
+        ## Loop through series dictionary, pull down data,
+        ## make necessary adjustments, then save to data dictionary    
+        for k, v in ng_ids.items():
+            dat = urlopen(url+v).read()
+            data = json.loads(dat.decode())
+
+            df = pd.DataFrame(data['series'][0]['data'],
+                               columns=['Date',k[:-3]])
+
+            df.set_index('Date',drop=True,inplace=True)
+            df.sort_index(inplace=True)
+
+            # Make nat gas prod same units as nat gas consumption -- billion cubic feet
+            if k[:-3] == 'prod':
+                df = df/1000
+            ng_data_dict[k[:-3]] = df
+
+
+        ## Create dataframe combining all monthly data series
+        ng_data = pd.DataFrame()
+        for v in ng_data_dict.values():
+            ng_data = pd.concat([ng_data, v], axis=1)
+
+        ng_data.dropna(inplace=True)
+        ng_data['netbal'] = ng_data['prod'] - ng_data['cons']
+        ng_data.index = pd.to_datetime(ng_data.index+'01')
+        ng_data.index = ng_data.index.to_period('M').to_timestamp('M')
+
+        ng_data = pd.concat([ng_data,ng_m], join='inner', axis=1)
+        ng_data.rename(columns={'Value':'nat_gas'},inplace=True)
+        ng_data = pd.concat([ng_data, econ_m], join='inner', axis=1)
+
+    return ng_data
 

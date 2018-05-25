@@ -12,46 +12,44 @@ import pandas as pd
 import os
 import numpy as np
 import base64
-
 from app import app
-from py_scripts import multivariate_michele, descriptive_statistics, LSTM
-
-#app = dash.Dash(__name__)
-#server = app.server
-
-#app.config['suppress_callback_exceptions']=True
+from py_scripts import multivariate, descriptive_statistics, LSTM, mongoQueryScripts, fb_prophet, supply_demand_data
 
 # Holders for Other dataframes
-df_equity_char = pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
-df_equity_diver =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
-df_expenses =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
-df_minimums =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
 df_dividend =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
 df_realized =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
 df_unrealized =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
 
-df_graph = pd.DataFrame({"Date": [1, 2, 3, 4], 'Vanguard 500 Index Fund': [2, 3, 4, 5], 'MSCI EAFE Index Fund (ETF)':[4, 5, 6, 7]})
-
 # get prices
-wti_d = pd.read_csv("py_data/ng_values.csv")
-wti_d_stats = pd.DataFrame({"label": ["Minimum", "Maximum", "Mean", "Standard Deviation", "Variance"],
-                           "value": [float(wti_d["nat_gas"].min()), float(wti_d["nat_gas"].max()), int(wti_d["nat_gas"].mean()), int(wti_d["nat_gas"].std()), int(wti_d["nat_gas"].var())]})
-wti_d['Date'] =  pd.to_datetime(wti_d['Date'], infer_datetime_format=True)
+ng_df = mongoQueryScripts.ng_df
+ng_df = ng_df.sort_values(by=['month_timestamp'])
+ng_df_stats = pd.DataFrame({"label": ["Minimum", "Maximum", "Mean", "Standard Deviation", "Variance"],
+                           "value": [float(ng_df["ng_val"].min()), float(ng_df["ng_val"].max()), int(ng_df["ng_val"].mean()), int(ng_df["ng_val"].std()), int(ng_df["ng_val"].var())]})
+ng_df['month_timestamp'] =  pd.to_datetime(ng_df['month_timestamp'], infer_datetime_format=True)
 
-#multivatiate-ARIMA data
-data_silverio, residual_arima, plot_position_arima = multivariate_michele.ng_multivariable()
+#multivariate data
+ols_df, f_df, fa_df, residual_ols, plot_position_ols, trade = multivariate.getOLS(sym = "ng")
 
 # LSTM run
-LSTM_prediction, LSTM_future, LSTM_all_data, LSTM_residuals = LSTM.LSTM_prediction("ng")
-
-# get us economic data
-us_econ = pd.read_csv("py_data/us_econ.csv")
+LSTM_prediction, LSTM_future, LSTM_all_data, LSTM_residuals, recommendations = LSTM.LSTM_prediction("ng")
+LSTM_prediction_week = LSTM_future.tail(7).round(2)
 
 # get rig_information
-ng_data = pd.read_csv("py_data/ng_data.csv")
+ng_data, ticker = supply_demand_data.get_supply_demand_data('ng')
 df_stats =  descriptive_statistics.descriptive_stats(ng_data)
 df_stats_df = df_stats.stats_df()
 ng_stats = df_stats_df.reset_index().round(2)
+
+# FB Prophet Data
+ng_daily_df, fb_yu, low, mid, fb_prophet_forecast = fb_prophet.testRunProphet('ng')
+ng_daily_df = ng_daily_df.sort_values(by=['day_timestamp'])
+headers = ["ds", 'yhat']
+fb_prophet_forecast = fb_prophet_forecast.reset_index()
+fb_prophet_prediction = fb_prophet_forecast[headers].tail(7).round(2)
+
+#fb_prophet_forecast = fb_prophet.forecast_data
+#ng_daily_df = mongoQueryScripts.ng_daily_df
+#fb_yu = fb_prophet.yu
 
 # reusable componenets
 def make_dash_table(df):
@@ -70,10 +68,6 @@ def print_button():
 
 # includes page/full view
 def get_logo():
-
-    image_directory =  os.getcwd() + "/"
-    image_filename = 'logo.png'
-    encoded_image = base64.b64encode(open(image_directory + image_filename, 'rb').read())
 
     logo = html.Div([
 
@@ -103,10 +97,9 @@ def get_header():
 def get_menu():
     menu = html.Div([
         dcc.Link('Overview   ', href='/apps/app_ng/overview', className="tab first"),
-        dcc.Link('ARIMA   ', href='/apps/app_ng/multivariable_ARIMA', className="tab"),
+        dcc.Link('Multivariable Model   ', href='/apps/app_ng/multivariable', className="tab"),
         dcc.Link('FB Prophet   ', href='/apps/app_ng/fb_prophet', className="tab"),
         dcc.Link('Long Short-Term Memory   ', href='/apps/app_ng/LSTM', className="tab"),
-        dcc.Link('Support Vector Machine  ', href='/apps/app_ng/SVM', className="tab"),
         dcc.Link('Takeaways   ', href='/apps/app_ng/takeaways', className="tab")
     ], className="row ")
     return menu
@@ -145,7 +138,7 @@ overview = html.Div([  # page 1
                 html.Div([
                     html.H6(["Natural Gas Spot Data Statistics"],
                             className="gs-header gs-table-header padded"),
-                    html.Table(make_dash_table(wti_d_stats))
+                    html.Table(make_dash_table(ng_df_stats))
                 ], className="six columns"),
 
             ], className="row "),
@@ -161,8 +154,8 @@ overview = html.Div([  # page 1
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x = wti_d['Date'],
-                                    y = wti_d['nat_gas'],
+                                    x = ng_df['month_timestamp'],
+                                    y = ng_df['ng_val'],
                                     line = {"color": "rgb(53, 83, 255)"},
                                     mode = "lines")
                             ],
@@ -194,13 +187,13 @@ overview = html.Div([  # page 1
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x=us_econ.index, # assign x as the dataframe column 'x'
-                                    y=us_econ['twd'],
+                                    x=ng_data.index, # assign x as the dataframe column 'x'
+                                    y=ng_data['twd'],
                                     name = 'Daily Trade-weighted Dollar Index'
                                 ),
                                 go.Scatter(
-                                    x=us_econ.index, # assign x as the dataframe column 'x'
-                                    y=us_econ['ip'],
+                                    x=ng_data.index, # assign x as the dataframe column 'x'
+                                    y=ng_data['ip'],
                                     name = 'Monthly US Industrial Production'
                                 )
                             ],
@@ -288,7 +281,7 @@ overview = html.Div([  # page 1
     ], className="page")
 
 
-multivariable_ARIMA = html.Div([  # page 2
+multivariable = html.Div([  # page 2
 
         print_button(),
 
@@ -302,26 +295,22 @@ multivariable_ARIMA = html.Div([  # page 2
             # Row 3
             html.Div([
                 html.Div([
-                    html.H6('Multivariate ARIMA',
+                    html.H6('Multivariate Model Summary',
                             className="gs-header gs-text-header padded"),
                     html.Br([]),
                     html.P("\
-                            The futures market is characterized by the ability to use very \
-                            high leverage relative to stock markets. Futures fundamental \
-                            analyis requires heavy research into the underlying factors that \
-                            determine the price level for a financial asset or commodity.\
-                            Therefore most traders tend to analyze only one or two futures at a \
-                            time. This analysis utilizes machine learning techniques to better \
-                            comprehend the change in prices for Natural Gas Markets. We will be \
-                            utilzing various external values related to this market as well as \
-                            global economies, along with various prediction techniques."),
+                            Monthly WTI oil prices were fitted on fundamental data (eg, rig count,\
+                            inventory, production), economic data (eg, trade-weighted data, industrial\
+                            production), and seasonal variables along with interaction\
+                            terms to forecast future prices. This is a multivariable ARIMA model\
+                            that utilizes many variables. "),
 
                 ], className="six columns"),
 
                 html.Div([
-                    html.H6(["Natural Gas Spot Data Statistics"],
+                    html.H6(["Natural Gas Prediction Values"],
                             className="gs-header gs-table-header padded"),
-                    html.Table(make_dash_table(wti_d_stats))
+                    html.Table(make_dash_table(f_df.reset_index().round(2)))
                 ], className="six columns"),
 
             ], className="row "),
@@ -337,10 +326,17 @@ multivariable_ARIMA = html.Div([  # page 2
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x = wti_d['Date'],
-                                    y = wti_d['nat_gas'],
+                                    x = ng_df['month_timestamp'],
+                                    y = ng_df['ng_val'],
                                     line = {"color": "rgb(53, 83, 255)"},
-                                    mode = "lines")
+                                    name = "Actual",
+                                    mode = "lines"),
+                                go.Scatter(
+                                    x = f_df['month_timestamp'],
+                                    y = f_df['ng_val'],
+                                    line = {"color": "rgb(255, 0, 0)"},
+                                    name = "Predicted",
+                                    mode = "lines"),
                             ],
                             'layout': go.Layout(autosize = False,
                             title = "",
@@ -348,6 +344,7 @@ multivariable_ARIMA = html.Div([  # page 2
                             height = 200,
                             width = 340,
                             hovermode = "closest",
+                            legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
                             margin = {
                               "r": 20,
                               "t": 20,
@@ -370,8 +367,8 @@ multivariable_ARIMA = html.Div([  # page 2
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x = np.arange(-2, 4, len(range(-2, 4))/len(residual_arima)),
-                                    y = residual_arima,
+                                    x = np.arange(-2, 4, len(range(-2, 4))/len(residual_ols)),
+                                    y = residual_ols,
                                     line = {"color": "rgb(53, 83, 255)"},
                                     mode = "markers")
                             ],
@@ -399,9 +396,9 @@ multivariable_ARIMA = html.Div([  # page 2
             # Row 5
             html.Div([
                 html.Div([
-                    html.H6('Multivariate ARIMA Statistics',
+                    html.H6('Model Statistics (predictor, beta, p-value)',
                             className="gs-header gs-table-header padded"),
-                    html.Table(make_dash_table(ng_stats))
+                    html.Table(make_dash_table(ols_df.reset_index().round(2)))
                 ], className="six columns"),
                 html.Div([
                     html.H6("Q-Q Plot",
@@ -411,8 +408,8 @@ multivariable_ARIMA = html.Div([  # page 2
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x = np.arange(-2, 4, len(range(-2, 4))/len(residual_arima)),
-                                    y = plot_position_arima[1],
+                                    x = np.arange(-2, 4, len(range(-2, 4))/len(residual_ols)),
+                                    y = plot_position_ols[1],
                                     line = {"color": "rgb(53, 83, 255)"},
                                     mode = "markers")
                             ],
@@ -461,528 +458,337 @@ fbProphet = html.Div([ # page 3
         html.Div([
 
             # Header
-
             get_logo(),
             get_header(),
             html.Br([]),
             get_menu(),
-
-            # Row 1
-
+            # Row 3
             html.Div([
+                html.Div([
+                    html.H6('FB Prophet Summary',
+                            className="gs-header gs-text-header padded"),
+                    html.Br([]),
+                    html.P("\
+                            This FB Prophet model is generated using machine learning  \
+                            techniques utiling daily data and different volitility information."),
+
+                ], className="six columns"),
 
                 html.Div([
-                    html.H6(["Portfolio"],
-                            className="gs-header gs-table-header padded")
-                ], className="twelve columns"),
+                    html.H6(["Natural Gas Spot Data Statistics"],
+                            className="gs-header gs-table-header padded"),
+                    html.Table(make_dash_table(ng_df_stats))
+                ], className="six columns"),
 
             ], className="row "),
 
-            # Row 2
+            # Row 4
 
             html.Div([
-
                 html.Div([
-                    html.Strong(["Stock style"]),
+                    html.H6('Natural Gas Spot Predicted Using FB Prophet',
+                            className="gs-header gs-text-header padded"),
                     dcc.Graph(
-                        id='graph-5',
+                        id = "graph-1",
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x = ["1"],
-                                    y = ["1"],
-                                    hoverinfo = "none",
-                                    marker = {
-                                        "color": ["transparent"]
-                                    },
-                                    mode = "markers",
-                                    name = "B",
+                                    x=ng_daily_df['day_timestamp'],
+                                    y=ng_daily_df['ng_val'],
+                                    line = {"color": "rgb(53, 83, 255)"},
+                                    mode = "lines",
+                                    name = 'Actual'),
+                                go.Scatter(
+                                    x = fb_prophet_forecast['ds'][-30:],
+                                    y = fb_prophet_forecast['yhat'][-30:],
+                                    line = {"color": "rgb(255, 0, 0)"},
+                                    mode = "lines",
+                                    name = 'Predicted')
+                            ],
+                            'layout': go.Layout(autosize = False,
+                            title = "",
+                            font = {"family": "Raleway","size": 10},
+                            height = 200,
+                            width = 340,
+                            hovermode = "closest",
+                            legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
+                            margin = {
+                              "r": 20,
+                              "t": 20,
+                              "b": 20,
+                              "l": 50
+                            },
+                        )
+                        },
+                        config={
+                            'displayModeBar': False
+                        }
+                    )
+                ], className="six columns"),
+
+                html.Div([
+                    html.H6("Rolling 9-day Volatility",
+                            className="gs-header gs-table-header padded"),
+                    dcc.Graph(
+                        id="graph-2",
+                        figure={
+                            'data': [
+                                go.Scatter(
+                                    x = ng_daily_df['day_timestamp'],
+                                    y = fb_yu[-400:],
+                                    line = {"color": "rgb(53, 83, 255)"},
+                                    mode = "lines")
+                            ],
+                            'layout': go.Layout(autosize = False,
+                            title = "",
+                            font = {"family": "Raleway","size": 10},
+                            height = 200,
+                            width = 340,
+                            hovermode = "closest",
+                            margin = {
+                              "r": 20,
+                              "t": 20,
+                              "b": 20,
+                              "l": 50
+                            },
+                        )
+                        },
+                        config={
+                            'displayModeBar': False
+                        }
+                    )
+                ], className="six columns"),
+            ], className="row "),
+
+            # Row 5
+            html.Div([
+                html.Div([
+                    html.H6('Natural Gas Prediction Prices',
+                            className="gs-header gs-table-header padded"),
+                    html.Table(make_dash_table(fb_prophet_prediction))
+                ], className="six columns"),
+                html.Div([
+                    html.H6("Actual vs Prediction",
+                            className="gs-header gs-table-header padded"),
+                    dcc.Graph(
+                        id='graph-3',
+                        figure={
+                            'data': [
+                                go.Scatter(
+                                    x=ng_daily_df.tail(529)['day_timestamp'],
+                                    y=ng_daily_df.tail(529)['ng_val'],
+                                    name = 'Actual',
+                                    mode = "lines"
+                                ),
+                                go.Scatter(
+                                    x= fb_prophet_forecast['ds'],
+                                    y=fb_prophet_forecast['yhat'],
+                                    name = 'Prediction',
+                                    mode = "lines"
                                 )
                             ],
                             'layout': go.Layout(
+                                autosize = False,
                                 title = "",
-                                annotations = [
-                                {
-                                  "x": 0.990130093458,
-                                  "y": 1.00181709504,
-                                  "align": "left",
-                                  "font": {
-                                    "family": "Raleway",
-                                    "size": 9
-                                  },
-                                  "showarrow": False,
-                                  "text": "<b>Market<br>Cap</b>",
-                                  "xref": "x",
-                                  "yref": "y"
+                                font = {"family": "Raleway","size": 10},
+                                height = 200,
+                                width = 340,
+                                hovermode = "closest",
+                                legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
+                                margin = {
+                                  "r": 20,
+                                  "t": 20,
+                                  "b": 20,
+                                  "l": 50
                                 },
-                                {
-                                  "x": 1.00001816013,
-                                  "y": 1.35907755794e-16,
-                                  "font": {
-                                    "family": "Raleway",
-                                    "size": 9
-                                  },
-                                  "showarrow": False,
-                                  "text": "<b>Style</b>",
-                                  "xref": "x",
-                                  "yanchor": "top",
-                                  "yref": "y"
-                                }
-                              ],
-                              autosize = False,
-                              width = 200,
-                              height = 150,
-                              hovermode = "closest",
-                              margin = {
-                                "r": 30,
-                                "t": 20,
-                                "b": 20,
-                                "l": 30
-                              },
-                              shapes = [
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0,
-                                  "x1": 0.33,
-                                  "xref": "paper",
-                                  "y0": 0,
-                                  "y1": 0.33,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "dash": "solid",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0.33,
-                                  "x1": 0.66,
-                                  "xref": "paper",
-                                  "y0": 0,
-                                  "y1": 0.33,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0.66,
-                                  "x1": 0.99,
-                                  "xref": "paper",
-                                  "y0": 0,
-                                  "y1": 0.33,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0,
-                                  "x1": 0.33,
-                                  "xref": "paper",
-                                  "y0": 0.33,
-                                  "y1": 0.66,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0.33,
-                                  "x1": 0.66,
-                                  "xref": "paper",
-                                  "y0": 0.33,
-                                  "y1": 0.66,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0.66,
-                                  "x1": 0.99,
-                                  "xref": "paper",
-                                  "y0": 0.33,
-                                  "y1": 0.66,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0,
-                                  "x1": 0.33,
-                                  "xref": "paper",
-                                  "y0": 0.66,
-                                  "y1": 0.99,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(255, 127, 14)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 1
-                                  },
-                                  "opacity": 0.9,
-                                  "type": "rectangle",
-                                  "x0": 0.33,
-                                  "x1": 0.66,
-                                  "xref": "paper",
-                                  "y0": 0.66,
-                                  "y1": 0.99,
-                                  "yref": "paper"
-                                },
-                                {
-                                  "fillcolor": "rgb(127, 127, 127)",
-                                  "line": {
-                                    "color": "rgb(0, 0, 0)",
-                                    "width": 2
-                                  },
-                                  "opacity": 0.3,
-                                  "type": "rectangle",
-                                  "x0": 0.66,
-                                  "x1": 0.99,
-                                  "xref": "paper",
-                                  "y0": 0.66,
-                                  "y1": 0.99,
-                                  "yref": "paper"
-                                }
-                              ],
-                              xaxis = {
-                                "autorange": True,
-                                "range": [0.989694747864, 1.00064057995],
-                                "showgrid": False,
-                                "showline": False,
-                                "showticklabels": False,
-                                "title": "<br>",
-                                "type": "linear",
-                                "zeroline": False
-                              },
-                              yaxis = {
-                                "autorange": True,
-                                "range": [-0.0358637178721, 1.06395696354],
-                                "showgrid": False,
-                                "showline": False,
-                                "showticklabels": False,
-                                "title": "<br>",
-                                "type": "linear",
-                                "zeroline": False
-                              }
+                                showlegend = True,
                             )
                         },
                         config={
                             'displayModeBar': False
                         }
                     )
+                ], className="six columns"),
 
-                ], className="four columns"),
-
-                html.Div([
-                    html.P("Vanguard 500 Index Fund seeks to track the performance of\
-                     a benchmark index that meaures the investment return of large-capitalization stocks."),
-                    html.P("Learn more about this portfolio's investment strategy and policy.")
-                ], className="eight columns middle-aligned"),
-
-            ], className="row "),
-
-            # Row 3
-
-            html.Br([]),
-
-            html.Div([
-
-                html.Div([
-                    html.H6(["Equity characteristics as of 01/31/2018"], className="gs-header gs-table-header tiny-header"),
-                    html.Table(make_dash_table(df_equity_char), className="tiny-header")
-                ], className=" twelve columns"),
-
-            ], className="row "),
-
-            # Row 4
-
-            html.Div([
-
-                html.Div([
-                    html.H6(["Equity sector diversification"], className="gs-header gs-table-header tiny-header"),
-                    html.Table(make_dash_table(df_equity_diver), className="tiny-header")
-                ], className=" twelve columns"),
-
-            ], className="row "),
+            ], className="row ")
 
         ], className="subpage")
 
-    ], className="page")
+        ], className="page")
 
 LSTM = html.Div([  # page 4
-print_button(),
-
-html.Div([
-
-    # Header
-    get_logo(),
-    get_header(),
-    html.Br([]),
-    get_menu(),
-    # Row 3
-    html.Div([
-        html.Div([
-            html.H6('Long Short Term Memory Summary',
-                    className="gs-header gs-text-header padded"),
-            html.Br([]),
-            html.P("\
-                    LSTM models were first created to help preserve the error that can \
-                    be backpropagated through time and layers. This addresses the \
-                    vanishing or exploding derivative problem present with RNN models \
-                    and they allow recurrent nets to learn many time steps over. Therefore,\
-                    LSTMs can learn outside the normal flow and “determine whether to let \
-                    new input in or erase the present data” or even whether to perform\
-                    addition or multiplication during the data transformation (DL4J). \
-                    Erasing data helps the neural network not not overfit our results,\
-                    bringing in new data and not forcing relationships between different\
-                     datasets that may not make much sense"),
-
-        ], className="six columns"),
-
-        html.Div([
-            html.H6(["Natural Gas Spot Data Statistics"],
-                    className="gs-header gs-table-header padded"),
-            html.Table(make_dash_table(wti_d_stats))
-        ], className="six columns"),
-
-    ], className="row "),
-
-    # Row 4
-
-    html.Div([
-        html.Div([
-            html.H6('Natural Gas Spot Predicted Using LSTM',
-                    className="gs-header gs-text-header padded"),
-            dcc.Graph(
-                id = "graph-1",
-                figure={
-                    'data': [
-                        go.Scatter(
-                            x = wti_d['Date'],
-                            y = wti_d['nat_gas'],
-                            line = {"color": "rgb(53, 83, 255)"},
-                            mode = "lines",
-                            name = 'Actual'),
-                        go.Scatter(
-                            x = LSTM_future['Date'],
-                            y = LSTM_future['nat_gas'],
-                            line = {"color": "rgb(0, 0, 0)"},
-                            mode = "lines",
-                            name = 'Predicted')
-                    ],
-                    'layout': go.Layout(autosize = False,
-                    title = "",
-                    font = {"family": "Raleway","size": 10},
-                    height = 200,
-                    width = 340,
-                    hovermode = "closest",
-                    legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
-                    margin = {
-                      "r": 20,
-                      "t": 20,
-                      "b": 20,
-                      "l": 50
-                    },
-                )
-                },
-                config={
-                    'displayModeBar': False
-                }
-            )
-        ], className="six columns"),
-
-        html.Div([
-            html.H6("Residual Plot",
-                    className="gs-header gs-table-header padded"),
-            dcc.Graph(
-                id="graph-2",
-                figure={
-                    'data': [
-                        go.Scatter(
-                            x = np.arange(-2, 4, len(range(-2, 4))/len(LSTM_residuals)),
-                            y = LSTM_residuals,
-                            line = {"color": "rgb(53, 83, 255)"},
-                            mode = "markers")
-                    ],
-                    'layout': go.Layout(autosize = False,
-                    title = "",
-                    font = {"family": "Raleway","size": 10},
-                    height = 200,
-                    width = 340,
-                    hovermode = "closest",
-                    margin = {
-                      "r": 20,
-                      "t": 20,
-                      "b": 20,
-                      "l": 50
-                    },
-                )
-                },
-                config={
-                    'displayModeBar': False
-                }
-            )
-        ], className="six columns"),
-    ], className="row "),
-
-    # Row 5
-    html.Div([
-        html.Div([
-            html.H6('Natural Gas Production Statistics',
-                    className="gs-header gs-table-header padded"),
-            html.Table(make_dash_table(ng_stats))
-        ], className="six columns"),
-        html.Div([
-            html.H6("Natural Gas Information",
-                    className="gs-header gs-table-header padded"),
-            dcc.Graph(
-                id='graph-3',
-                figure={
-                    'data': [
-                        go.Scatter(
-                            x=ng_data.index, # assign x as the dataframe column 'x'
-                            y=ng_data['rig'],
-                            name = 'Rigs'
-                        ),
-                        go.Scatter(
-                            x=ng_data.index, # assign x as the dataframe column 'x'
-                            y=ng_data['prod'],
-                            name = 'Production'
-                        ),
-                        go.Scatter(
-                            x=ng_data.index, # assign x as the dataframe column 'x'
-                            y=ng_data['cons'],
-                            name = 'Consumption'
-                        )
-                    ],
-                    'layout': go.Layout(
-                        autosize = False,
-                        title = "",
-                        font = {"family": "Raleway","size": 10},
-                        height = 200,
-                        width = 340,
-                        hovermode = "closest",
-                        legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
-                        margin = {
-                          "r": 20,
-                          "t": 20,
-                          "b": 20,
-                          "l": 50
-                        },
-                        showlegend = True,
-                    )
-                },
-                config={
-                    'displayModeBar': False
-                }
-            )
-        ], className="six columns"),
-
-    ], className="row ")
-
-], className="subpage")
-
-], className="page")
-
-SVM = html.Div([  # page 5
-
         print_button(),
 
         html.Div([
 
             # Header
-
             get_logo(),
             get_header(),
             html.Br([]),
             get_menu(),
-
-            # Row 1
-
-            html.Div([
-
-                html.Div([
-                    html.H6(["Distributions"],
-                            className="gs-header gs-table-header padded"),
-                    html.Strong(["Distributions for this fund are scheduled quaterly"])
-                ], className="twelve columns"),
-
-            ], className="row "),
-
-            # Row 2
-
-            html.Div([
-
-                html.Div([
-                    html.Br([]),
-                    html.H6(["Dividend and capital gains distributions"], className="gs-header gs-table-header tiny-header"),
-                    html.Table(make_dash_table(df_dividend), className="tiny-header")
-                ], className="twelve columns"),
-
-            ], className="row "),
-
             # Row 3
-
             html.Div([
+                html.Div([
+                    html.H6('Long Short Term Memory Summary',
+                            className="gs-header gs-text-header padded"),
+                    html.Br([]),
+                    html.P("\
+                            LSTM models were first created to help preserve the error that can \
+                            be backpropagated through time and layers. This addresses the \
+                            vanishing or exploding derivative problem present with RNN models \
+                            and they allow recurrent nets to learn many time steps over. Therefore,\
+                            LSTMs can learn outside the normal flow and “determine whether to let \
+                            new input in or erase the present data” or even whether to perform\
+                            addition or multiplication during the data transformation (DL4J). \
+                            Erasing data helps the neural network not not overfit our results,\
+                            bringing in new data and not forcing relationships between different\
+                             datasets that may not make much sense"),
+
+                ], className="six columns"),
 
                 html.Div([
-                    html.H6(["Realized/unrealized gains as of 01/31/2018"], className="gs-header gs-table-header tiny-header")
-                ], className=" twelve columns")
+                    html.H6(["Natural Gas Spot Data Statistics"],
+                            className="gs-header gs-table-header padded"),
+                    html.Table(make_dash_table(ng_df_stats))
+                ], className="six columns"),
 
             ], className="row "),
 
             # Row 4
 
             html.Div([
-
                 html.Div([
-                    html.Table(make_dash_table(df_realized))
+                    html.H6('Natural Gas Spot Predicted Using LSTM',
+                            className="gs-header gs-text-header padded"),
+                    dcc.Graph(
+                        id = "graph-1",
+                        figure={
+                            'data': [
+                                go.Scatter(
+                                    x = LSTM_all_data['month_timestamp'],
+                                    y = LSTM_all_data['ng_val'],
+                                    line = {"color": "rgb(53, 83, 255)"},
+                                    mode = "lines",
+                                    name = 'Actual'),
+                                go.Scatter(
+                                    x = LSTM_all_data['month_timestamp'][-7:],
+                                    y = LSTM_all_data['ng_val'][-7:],
+                                    line = {"color": "rgb(255, 0, 0)"},
+                                    mode = "lines",
+                                    name = 'Predicted')
+                            ],
+                            'layout': go.Layout(autosize = False,
+                            title = "",
+                            font = {"family": "Raleway","size": 10},
+                            height = 200,
+                            width = 340,
+                            hovermode = "closest",
+                            legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
+                            margin = {
+                              "r": 20,
+                              "t": 20,
+                              "b": 20,
+                              "l": 50
+                            },
+                        )
+                        },
+                        config={
+                            'displayModeBar': False
+                        }
+                    )
                 ], className="six columns"),
 
                 html.Div([
-                    html.Table(make_dash_table(df_unrealized))
+                    html.H6("Residual Plot",
+                            className="gs-header gs-table-header padded"),
+                    dcc.Graph(
+                        id="graph-2",
+                        figure={
+                            'data': [
+                                go.Scatter(
+                                    x = np.arange(-2, 4, len(range(-2, 4))/len(LSTM_residuals)),
+                                    y = LSTM_residuals,
+                                    line = {"color": "rgb(53, 83, 255)"},
+                                    mode = "markers")
+                            ],
+                            'layout': go.Layout(autosize = False,
+                            title = "",
+                            font = {"family": "Raleway","size": 10},
+                            height = 200,
+                            width = 340,
+                            hovermode = "closest",
+                            margin = {
+                              "r": 20,
+                              "t": 20,
+                              "b": 20,
+                              "l": 50
+                            },
+                        )
+                        },
+                        config={
+                            'displayModeBar': False
+                        }
+                    )
                 ], className="six columns"),
-
             ], className="row "),
+
+            # Row 5
+            html.Div([
+                html.Div([
+                    html.H6('Natural Gas Prediction Prices',
+                            className="gs-header gs-table-header padded"),
+                    html.Table(make_dash_table(LSTM_prediction_week))
+                ], className="six columns"),
+                html.Div([
+                    html.H6("Actual vs Prediction",
+                            className="gs-header gs-table-header padded"),
+                    dcc.Graph(
+                        id='graph-3',
+                        figure={
+                            'data': [
+                                go.Scatter(
+                                    x=ng_df['month_timestamp'][-7:],
+                                    y=ng_df['ng_val'][-7:],
+                                    name = 'Actual',
+                                    mode = "markers"
+                                ),
+                                go.Scatter(
+                                    x=LSTM_prediction['month_timestamp'][-7:],
+                                    y=LSTM_prediction['ng_val'],
+                                    name = 'Prediction',
+                                    mode = "markers"
+                                )
+                            ],
+                            'layout': go.Layout(
+                                autosize = False,
+                                title = "",
+                                font = {"family": "Raleway","size": 10},
+                                height = 200,
+                                width = 340,
+                                hovermode = "closest",
+                                legend = {"x": -0.0277108433735,"y": -0.142606516291,"orientation": "h"},
+                                margin = {
+                                  "r": 20,
+                                  "t": 20,
+                                  "b": 20,
+                                  "l": 50
+                                },
+                                showlegend = True,
+                            )
+                        },
+                        config={
+                            'displayModeBar': False
+                        }
+                    )
+                ], className="six columns"),
+
+            ], className="row ")
 
         ], className="subpage")
 
-    ], className="page")
+        ], className="page")
 
-takeaways = html.Div([  # page 6
+takeaways = html.Div([  # page 5
 
         print_button(),
 

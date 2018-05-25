@@ -5,6 +5,9 @@ from dash.dependencies import Input, Output
 from app import app
 from apps import app_ng, app_oil
 
+"""
+@author: michelebradley
+"""
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
@@ -22,14 +25,12 @@ index_page = html.Div([
 def display_page(pathname):
     if pathname == '/apps/app_ng/overview':
         return app_ng.overview
-    elif pathname == '/apps/app_ng/multivariable_ARIMA':
-        return app_ng.multivariable_ARIMA
+    elif pathname == '/apps/app_ng/multivariable':
+        return app_ng.multivariable
     elif pathname == '/apps/app_ng/fb_prophet':
         return app_ng.fbProphet
     elif pathname == '/apps/app_ng/LSTM':
         return app_ng.LSTM
-    elif pathname == '/apps/app_ng/SVM':
-        return app_ng.SVM
     elif pathname == '/apps/app_ng/takeaways':
         return app_ng.takeaways
     elif pathname == '/apps/app_oil/overview':

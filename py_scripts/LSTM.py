@@ -16,26 +16,30 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
 from sklearn.metrics import roc_curve
+from py_scripts import mongoQueryScripts
 
-def get_future_data(crypto_data):
+"""
+@author: michelebradley
+"""
+
+def get_future_data(crypto_data, headers):
     crypto_data = crypto_data.reset_index()
-    columns = ['Date', 'nat_gas']
-    crypto_data_avg = crypto_data[columns]
-    price = crypto_data['nat_gas']
-    last = crypto_data_avg.tail(1)['Date'].dt.date
+    crypto_data_avg = crypto_data[headers]
+    price = crypto_data[headers[1]]
+    last = crypto_data_avg.tail(1)[headers[0]].dt.date
     future = []
 
-    for i in range(35):
-        time = last + timedelta(days=1)
+    for i in range(7):
+        time = last + timedelta(days=31)
         last = time
         future.append(time)
 
-    usage = random.sample(range(int(min(price)), int(max(price)+100)), 35)
+    usage = random.sample(range(int(min(price)-2), int(max(price)+2)), 7)
     future_array = np.concatenate(future, axis=0)
-    d = {'Date': future_array, 'nat_gas': usage}
+    d = {headers[0]: future_array, headers[1]: usage}
     df = pd.DataFrame(data=d)
     crypto_data_avg_random = crypto_data_avg.append(df)
-    prices = crypto_data_avg_random['nat_gas']
+    prices = crypto_data_avg_random[headers[1]]
 
     crypto_data_avg.append(crypto_data_avg_random)
 
@@ -52,7 +56,7 @@ def get_train_data(prices):
     train, test = scaled[0:train_size,:], scaled[train_size:len(scaled),:]
     return train, test, scaler
 
-def create_dataset(dataset, look_back=35):
+def create_dataset(dataset, look_back=7):
     dataX, dataY = [], []
     for i in range(len(dataset) - look_back):
         a = dataset[i:(i + look_back), 0]
@@ -60,14 +64,14 @@ def create_dataset(dataset, look_back=35):
         dataY.append(dataset[i + look_back, 0])
     return np.array(dataX), np.array(dataY)
 
-def run_LSTM(data):
+def run_LSTM(data, col_name, headers):
     tf.reset_default_graph()
 
-    future_array, prices = get_future_data(data)
+    future_array, prices = get_future_data(data, headers)
 
-    train, test, scaler = get_train_data(data['nat_gas'])
-    trainX, trainY = create_dataset(train, 35)
-    testX, testY = create_dataset(test, 35)
+    train, test, scaler = get_train_data(data[col_name])
+    trainX, trainY = create_dataset(train, 7)
+    testX, testY = create_dataset(test, 7)
 
     trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
     testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
@@ -84,7 +88,7 @@ def run_LSTM(data):
     testY_inverse = scaler.inverse_transform(testY.reshape(-1, 1))
 
     train, test, scaler = get_train_data(prices)
-    testX, testfutureY = create_dataset(test, 35)
+    testX, testfutureY = create_dataset(test, 7)
     testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
 
     yfuture = model.predict(testX)
@@ -92,23 +96,51 @@ def run_LSTM(data):
 
     return yhat_inverse, testY, future_array, yfuture_inverse
 
+def recommendation(last_price, predictions):
+    number = len(predictions)
+    sell = 0
+    buy = 0
+    for n in range(number):
+        predict = float(predictions.values[n])
+        if last_price > predict:
+            sell = sell + 1
+        else:
+            buy = buy + 1
+    if sell > buy:
+        return "SELL"
+    else:
+        return "BUY"
+
 def LSTM_prediction(future):
 
     if future == 'ng':
-        data = pd.read_csv("py_data/ng_values.csv")
-        data['Date'] =  pd.to_datetime(data['Date'], infer_datetime_format=True)
+        ng_df = mongoQueryScripts.ng_df
+        data = ng_df.sort_values(by=['month_timestamp'])
+        data['month_timestamp'] =  pd.to_datetime(data['month_timestamp'], infer_datetime_format=True)
         data = data.reset_index()
+        col_name = "ng_val"
+        headers = ["month_timestamp", "ng_val"]
+    elif future == "oil":
+        wtc_df = mongoQueryScripts.wtc_df
+        data = wtc_df.sort_values(by=['month_timestamp'])
+        data['month_timestamp'] =  pd.to_datetime(data['month_timestamp'], infer_datetime_format=True)
+        data = data.reset_index()
+        col_name = "oil_val"
+        headers = ["month_timestamp", "oil_val"]
     else:
-        data = "data"
+        print ("choose proper future ng or oil")
 
-    yhat_inverse, testY, future_array, yfuture_inverse = run_LSTM(data)
+
+    yhat_inverse, testY, future_array, yfuture_inverse = run_LSTM(data, col_name, headers)
     yhat = [item for sublist in yhat_inverse for item in sublist]
-    test_df = pd.DataFrame({"Date": data['Date'][-35:], "nat_gas": yhat[0:35]})
+    test_df = pd.DataFrame({"month_timestamp": data['month_timestamp'][-7:], col_name: yhat[0:7]})
     residuals = testY - yhat
 
     yfuture = [item for sublist in yfuture_inverse for item in sublist]
-    future_df = pd.DataFrame({"Date": future_array, "nat_gas": yfuture[0:35]})
+    future_df = pd.DataFrame({"month_timestamp": future_array, col_name: yfuture[0:7]})
 
     all_data = data.append(future_df)
 
-    return test_df, future_df, all_data, residuals
+    recommendations = recommendation(data[col_name].values[-1], future_df[col_name])
+
+    return test_df, future_df, all_data, residuals, recommendations
