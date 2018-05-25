@@ -35,18 +35,14 @@ def display_page(pathname):
         return app_ng.takeaways
     elif pathname == '/apps/app_oil/overview':
         return app_oil.overview
-    elif pathname == '/apps/app_oil/price-performance':
-        return app_oil.pricePerformance
-    elif pathname == '/apps/app_oil/portfolio-management':
-            return app_oil.portfolioManagement
-    elif pathname == '/apps/app_oil/fees':
-        return app_oil.feesMins
-    elif pathname == '/apps/app_oil/distributions':
-        return app_oil.distributions
-    elif pathname == '/apps/app_oil/news-and-reviews':
-        return app_oil.newsReviews
-    elif pathname == "/":
-        index_page
+    elif pathname == '/apps/app_oil/multivariable':
+        return app_oil.multivariable
+    elif pathname == '/apps/app_oil/fb_prophet':
+        return app_oil.fbProphet
+    elif pathname == '/apps/app_oil/LSTM':
+        return app_oil.LSTM
+    elif pathname == '/apps/app_oil/takeaways':
+        return app_oil.takeaways
     else:
         "404"
 

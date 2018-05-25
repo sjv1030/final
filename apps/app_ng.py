@@ -15,11 +15,6 @@ import base64
 from app import app
 from py_scripts import multivariate, descriptive_statistics, LSTM, mongoQueryScripts, fb_prophet, supply_demand_data
 
-# Holders for Other dataframes
-df_dividend =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
-df_realized =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
-df_unrealized =  pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5]})
-
 # get prices
 ng_df = mongoQueryScripts.ng_df
 ng_df = ng_df.sort_values(by=['month_timestamp'])
@@ -28,11 +23,7 @@ ng_df_stats = pd.DataFrame({"label": ["Minimum", "Maximum", "Mean", "Standard De
 ng_df['month_timestamp'] =  pd.to_datetime(ng_df['month_timestamp'], infer_datetime_format=True)
 
 #multivariate data
-ols_df, f_df, fa_df, residual_ols, plot_position_ols, trade = multivariate.getOLS(sym = "ng")
-
-# LSTM run
-LSTM_prediction, LSTM_future, LSTM_all_data, LSTM_residuals, recommendations = LSTM.LSTM_prediction("ng")
-LSTM_prediction_week = LSTM_future.tail(7).round(2)
+ols_df, f_df, fa_df, residual_ols, plot_position_ols, trade_ols = multivariate.getOLS(sym = "ng")
 
 # get rig_information
 ng_data, ticker = supply_demand_data.get_supply_demand_data('ng')
@@ -40,16 +31,18 @@ df_stats =  descriptive_statistics.descriptive_stats(ng_data)
 df_stats_df = df_stats.stats_df()
 ng_stats = df_stats_df.reset_index().round(2)
 
+# LSTM run
+LSTM_prediction, LSTM_future, LSTM_all_data, LSTM_residuals, recommendations = LSTM.LSTM_prediction("ng")
+LSTM_prediction_week = LSTM_future.tail(7).round(2)
+
 # FB Prophet Data
-ng_daily_df, fb_yu, low, mid, fb_prophet_forecast = fb_prophet.testRunProphet('ng')
+ng_daily_df, fb_yu, low, medium, high = fb_prophet.testRunProphet('ng')
 ng_daily_df = ng_daily_df.sort_values(by=['day_timestamp'])
 headers = ["ds", 'yhat']
-fb_prophet_forecast = fb_prophet_forecast.reset_index()
+fb_prophet_forecast = medium.reset_index()
 fb_prophet_prediction = fb_prophet_forecast[headers].tail(7).round(2)
-
-#fb_prophet_forecast = fb_prophet.forecast_data
-#ng_daily_df = mongoQueryScripts.ng_daily_df
-#fb_yu = fb_prophet.yu
+ng_daily_df_stats = pd.DataFrame({"label": ["Minimum", "Maximum", "Mean", "Standard Deviation", "Variance"],
+                           "value": [float(ng_daily_df["ng_val"].min()), float(ng_daily_df["ng_val"].max()), int(ng_daily_df["ng_val"].mean()), int(ng_daily_df["ng_val"].std()), int(ng_daily_df["ng_val"].var())]})
 
 # reusable componenets
 def make_dash_table(df):
@@ -469,15 +462,25 @@ fbProphet = html.Div([ # page 3
                             className="gs-header gs-text-header padded"),
                     html.Br([]),
                     html.P("\
-                            This FB Prophet model is generated using machine learning  \
-                            techniques utiling daily data and different volitility information."),
+                            FBProphet is a recently open-sourced ML tool optimized for time series\
+                             fitting and prediction. It intrinsically discovers and optimizes for \
+                             multiple seasonality and changing growth rates, called changepoints. \
+                             In this deployment, the ability to add other time series regressors is\
+                              exploited; regressors are added to the linear part of the model. The \
+                              daily values of the commodity are regressed on the rolling 9-day \
+                              close-to-close volatility - a volatility measure appropriate for our \
+                              single daily scalar data points. Historical volatility was studied in \
+                              30-day windows: values were binned in incremental volatility ranges, \
+                              and three scenario paths were defined by measuring the frequencies. We \
+                              simulated three volatility series with the chracterstic bin frequencies, \
+                              then predicted commodity values for those scenarios."),
 
                 ], className="six columns"),
 
                 html.Div([
                     html.H6(["Natural Gas Spot Data Statistics"],
                             className="gs-header gs-table-header padded"),
-                    html.Table(make_dash_table(ng_df_stats))
+                    html.Table(make_dash_table(ng_daily_df_stats))
                 ], className="six columns"),
 
             ], className="row "),
@@ -493,17 +496,25 @@ fbProphet = html.Div([ # page 3
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x=ng_daily_df['day_timestamp'],
-                                    y=ng_daily_df['ng_val'],
-                                    line = {"color": "rgb(53, 83, 255)"},
+                                    x=ng_daily_df.tail(529)['day_timestamp'],
+                                    y=ng_daily_df.tail(529)['ng_val'],
                                     mode = "lines",
                                     name = 'Actual'),
                                 go.Scatter(
-                                    x = fb_prophet_forecast['ds'][-30:],
-                                    y = fb_prophet_forecast['yhat'][-30:],
-                                    line = {"color": "rgb(255, 0, 0)"},
+                                    x = low['ds'][-30:],
+                                    y = low['yhat'][-30:],
                                     mode = "lines",
-                                    name = 'Predicted')
+                                    name = 'low'),
+                                go.Scatter(
+                                    x = medium['ds'][-30:],
+                                    y = medium['yhat'][-30:],
+                                    mode = "lines",
+                                    name = 'med'),
+                                go.Scatter(
+                                    x = high['ds'][-30:],
+                                    y = high['yhat'][-30:],
+                                    mode = "lines",
+                                    name = 'high')
                             ],
                             'layout': go.Layout(autosize = False,
                             title = "",
@@ -575,14 +586,14 @@ fbProphet = html.Div([ # page 3
                         figure={
                             'data': [
                                 go.Scatter(
-                                    x=ng_daily_df.tail(529)['day_timestamp'],
-                                    y=ng_daily_df.tail(529)['ng_val'],
+                                    x=ng_daily_df.tail(500)['day_timestamp'],
+                                    y=ng_daily_df.tail(500)['ng_val'],
                                     name = 'Actual',
                                     mode = "lines"
                                 ),
                                 go.Scatter(
-                                    x= fb_prophet_forecast['ds'],
-                                    y=fb_prophet_forecast['yhat'],
+                                    x= low.head(500)['ds'],
+                                    y=low.head(500)['yhat'],
                                     name = 'Prediction',
                                     mode = "lines"
                                 )
@@ -735,7 +746,7 @@ LSTM = html.Div([  # page 4
             # Row 5
             html.Div([
                 html.Div([
-                    html.H6('Natural Gas Prediction Prices',
+                    html.H6('Oil Prediction Prices',
                             className="gs-header gs-table-header padded"),
                     html.Table(make_dash_table(LSTM_prediction_week))
                 ], className="six columns"),
@@ -788,6 +799,7 @@ LSTM = html.Div([  # page 4
 
         ], className="page")
 
+
 takeaways = html.Div([  # page 5
 
         print_button(),
@@ -806,27 +818,46 @@ takeaways = html.Div([  # page 5
             html.Div([
 
                 html.Div([
-                    html.H6('Vanguard News',
+                    html.H6('Recommendations',
                             className="gs-header gs-text-header padded"),
                     html.Br([]),
-                    html.P('10/25/16    The rise of indexing and the fall of costs'),
+                    html.P('Multivariate Model recommends that you:'),
                     html.Br([]),
-                    html.P("08/31/16    It's the index mutual fund's 40th anniversary: Let the low-cost, passive party begin")
+                    html.P('BUY Natural Gas Futures'),
+                    html.Br([]),
+                    html.P('FB Prophet Model recommends that you:'),
+                    html.Br([]),
+                    html.P('BUY Natural Gas Futures'),
+                    html.Br([]),
+                    html.P('Long Short Term Memory Model recommends that you:'),
+                    html.Br([]),
+                    html.P('BUY Natural Gas Futures'),
+                    html.Br([])
                 ], className="six columns"),
 
                 html.Div([
-                    html.H6("Reviews",
+                    html.H6("About Future Analytics Recommendations",
                             className="gs-header gs-table-header padded"),
                     html.Br([]),
-                    html.Li('Launched in 1976.'),
-                    html.Li('On average, has historically produced returns that have far outpaced the rate of inflation.*'),
-                    html.Li("Vanguard Quantitative Equity Group, the fund's advisor, is among the world's largest equity index managers."),
+                    html.P('We base our recommendations and prediction models on many factors that are \
+                    well researched within the data science and data analytics fields*'),
                     html.Br([]),
-                    html.P("Did you know? The fund launched in 1976 as Vanguard First Index Investment Trust—the nation's first index fund available to individual investors."),
+                    html.P("Recommendations are given based on not just one value in our prediction, \
+                    but the overall trend we are seeing with our prediction models."),
                     html.Br([]),
-                    html.P("* The performance of an index is not an exact representation of any particular investment, as you cannot invest directly in an index."),
-                    html.Br([]),
-                    html.P("Past performance is no guarantee of future returns. See performance data current to the most recent month-end.")
+                    html.P("Note that the Multivariate and FB Prophet models both utilize variables\
+                     related to the climate of the US Economy or of the Natural Gas Industry as a whole.\
+                     Both include a lag time on the other variables to generate a better estimate on \
+                     the price of the future in the months to come."),
+                     html.Br([]),
+                     html.P("The Long Short Term Memory model however, does not \
+                     utilize any other variables other than the trend and price of the dataset.\
+                     This is a machine learning techique that attempts to find trends in the data \
+                     to determine future prices."),
+                      html.Br([]),
+                      html.P("* Note that we do not expect any of these predictions to be \
+                      right on the money, but we do believe these statistical models can \
+                      provide insight on the trends for Natural Gas pricing in the months to come.")
                 ], className="six columns"),
 
             ], className="row ")

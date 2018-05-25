@@ -15,12 +15,9 @@ import plotly.tools as tls
 from py_scripts import mongoQueryScripts as mqs
 import probscale
 from pymongo import MongoClient
-from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
-from plotly.graph_objs import Scatter, Figure, Layout
-init_notebook_mode(connected=True)
 import plotly.graph_objs as go
 
-def getOLS(sym='o'):
+def getOLS(sym):
 
     if sym == 'ng':
         ticker = 'nat_gas'
@@ -241,8 +238,11 @@ def getOLS(sym='o'):
         trade = 'HOLD'
 
     f_df = f_df.reset_index()
-    f_df.columns = ["month_timestamp", "ng_val"]
 
+    if sym == 'ng':
+        f_df.columns = ["month_timestamp", "ng_val"]
+    else:
+        f_df.columns = ["month_timestamp", "oil"]
     plot_position = probscale.plot_pos(ols_fityy.resid)
 
     return (ols_df, f_df, fa_df, residyy, plot_position, trade)

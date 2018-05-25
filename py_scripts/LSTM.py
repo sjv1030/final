@@ -22,11 +22,11 @@ from py_scripts import mongoQueryScripts
 @author: michelebradley
 """
 
-def get_future_data(crypto_data, headers):
-    crypto_data = crypto_data.reset_index()
-    crypto_data_avg = crypto_data[headers]
-    price = crypto_data[headers[1]]
-    last = crypto_data_avg.tail(1)[headers[0]].dt.date
+def get_future_data(data, headers):
+    data = data.reset_index()
+    data_avg = data[headers]
+    price = data[headers[1]]
+    last = data_avg.tail(1)[headers[0]].dt.date
     future = []
 
     for i in range(7):
@@ -38,10 +38,8 @@ def get_future_data(crypto_data, headers):
     future_array = np.concatenate(future, axis=0)
     d = {headers[0]: future_array, headers[1]: usage}
     df = pd.DataFrame(data=d)
-    crypto_data_avg_random = crypto_data_avg.append(df)
-    prices = crypto_data_avg_random[headers[1]]
-
-    crypto_data_avg.append(crypto_data_avg_random)
+    data_avg_random = data_avg.append(df)
+    prices = data_avg_random[headers[1]]
 
     return future_array, prices
 
@@ -64,9 +62,7 @@ def create_dataset(dataset, look_back=7):
         dataY.append(dataset[i + look_back, 0])
     return np.array(dataX), np.array(dataY)
 
-def run_LSTM(data, col_name, headers):
-    tf.reset_default_graph()
-
+def run_LSTM(data, col_name, headers, future):
     future_array, prices = get_future_data(data, headers)
 
     train, test, scaler = get_train_data(data[col_name])
@@ -76,23 +72,48 @@ def run_LSTM(data, col_name, headers):
     trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
     testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
 
-    model = Sequential()
-    model.add(LSTM(100, input_shape=(trainX.shape[1], trainX.shape[2])))
-    model.add(Dense(1))
-    model.compile(loss='mae', optimizer='adam')
+    if future == "ng":
+        graph1 = tf.Graph()
+        with tf.Session(graph=graph1) as sess:
+            model = Sequential()
+            model.add(LSTM(100, input_shape=(trainX.shape[1], trainX.shape[2])))
+            model.add(Dense(1))
+            model.compile(loss='mae', optimizer='adam')
+            init=tf.global_variables_initializer()
+            history = model.fit(trainX, trainY, epochs=500, batch_size=100, validation_data=(testX, testY), verbose=0, shuffle=False)
 
-    history = model.fit(trainX, trainY, epochs=500, batch_size=100, validation_data=(testX, testY), verbose=0, shuffle=False)
+            yhat = model.predict(testX)
+            yhat_inverse = scaler.inverse_transform(yhat.reshape(-1, 1))
+            testY_inverse = scaler.inverse_transform(testY.reshape(-1, 1))
 
-    yhat = model.predict(testX)
-    yhat_inverse = scaler.inverse_transform(yhat.reshape(-1, 1))
-    testY_inverse = scaler.inverse_transform(testY.reshape(-1, 1))
+            train, test, scaler = get_train_data(prices)
+            testX, testfutureY = create_dataset(test, 7)
+            testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
 
-    train, test, scaler = get_train_data(prices)
-    testX, testfutureY = create_dataset(test, 7)
-    testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
+            yfuture = model.predict(testX)
+            yfuture_inverse = scaler.inverse_transform(yfuture.reshape(-1, 1))
+        sess.close()
+    elif future == "oil":
+        graph2 = tf.Graph()
+        with tf.Session(graph=graph2) as sess:
+            model = Sequential()
+            model.add(LSTM(100, input_shape=(trainX.shape[1], trainX.shape[2])))
+            model.add(Dense(1))
+            model.compile(loss='mae', optimizer='adam')
+            init=tf.global_variables_initializer()
+            history = model.fit(trainX, trainY, epochs=500, batch_size=100, validation_data=(testX, testY), verbose=0, shuffle=False)
 
-    yfuture = model.predict(testX)
-    yfuture_inverse = scaler.inverse_transform(yfuture.reshape(-1, 1))
+            yhat = model.predict(testX)
+            yhat_inverse = scaler.inverse_transform(yhat.reshape(-1, 1))
+            testY_inverse = scaler.inverse_transform(testY.reshape(-1, 1))
+
+            train, test, scaler = get_train_data(prices)
+            testX, testfutureY = create_dataset(test, 7)
+            testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
+
+            yfuture = model.predict(testX)
+            yfuture_inverse = scaler.inverse_transform(yfuture.reshape(-1, 1))
+        sess.close()
 
     return yhat_inverse, testY, future_array, yfuture_inverse
 
@@ -131,7 +152,8 @@ def LSTM_prediction(future):
         print ("choose proper future ng or oil")
 
 
-    yhat_inverse, testY, future_array, yfuture_inverse = run_LSTM(data, col_name, headers)
+    yhat_inverse, testY, future_array, yfuture_inverse = run_LSTM(data, col_name, headers, future)
+    tf.reset_default_graph()
     yhat = [item for sublist in yhat_inverse for item in sublist]
     test_df = pd.DataFrame({"month_timestamp": data['month_timestamp'][-7:], col_name: yhat[0:7]})
     residuals = testY - yhat

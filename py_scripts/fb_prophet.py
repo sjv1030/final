@@ -156,34 +156,5 @@ def testRunProphet(sym='o'):
         outcome= fitProphet(train,v)
         result_set[k]=outcome
 
-
-    print(result_set)
         #first two elements are the x,y inputs for the volatility graphs... the other three graphs contain the FB Prophet prediction and fit for each of the volatility scenarios
     return ng_daily_df, yu[-400:], result_set['low path'], result_set['mid path'], result_set['high path']
-
-#all_paths={'high path':high_path,'mid path':mid_path,'low path':low_path}
-
-#1) historical volatility plot: plt.plot(ng_daily_df.index.values[-400:],yu[-400:])
-
-''' legacy stuff
-ts_prophet.plot(forecast_data)
-
-#plot the prediction
-fig, ax1 = plt.subplots()
-ax1.plot(train.ds[-30:,],train.y[-30:,],color='green')
-ax1.plot(train.ds[-30:],forecast_data.yhat[-30:], color='red')
-ax1.plot(forecast_data.ds,forecast_data.yhat, color='black', linestyle=':')
-ax1.fill_between(forecast_data.ds, forecast_data['yhat_upper'], forecast_data['yhat_lower'], alpha=1.5, color='darkgray')
-ax1.set_title('Sales (Orange) vs Sales Forecast (Black)')
-ax1.set_ylabel('Dollar Sales')
-ax1.set_xlabel('Date')
-plt.show()
-
-#Diagnostics:
-#Absolute mean error
-#sum or squared residuals
-resids=forecast_data['yhat'][-530:-30].values-np.exp(fb_version1['y'][-500:].values)
-plt.hist(resids,ins=25)
-plt.show()
-
-'''
