@@ -30,3 +30,4 @@ Werkzeug==0.14.1
 statsmodels==0.8
 matplotlib==2.1.2
 quandl==3.3.0
+probscale==0.2.3
