@@ -1,6 +1,6 @@
 FROM python:3.6
 
-RUN akp add --no-cache gcc libc-dev
+RUN apk add --no-cache gcc libc-dev
 RUN apt-get -y update  && apt-get install -y \
   libpng-dev \
   apt-utils \
