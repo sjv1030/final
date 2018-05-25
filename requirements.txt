@@ -1,4 +1,4 @@
-﻿certifi==2018.1.18
+﻿certifi==2018.4.16
 chardet==3.0.4
 click==6.7
 dash==0.21.0
@@ -35,3 +35,5 @@ pytest==3.3.2
 tensorflow==1.5
 scikit-learn==0.19.1
 keras
+pymongo==3.4.0
+fbprophet

@@ -15,7 +15,7 @@ import plotly.tools as tls
 from py_scripts import mongoQueryScripts as mqs
 import probscale
 from pymongo import MongoClient
-import plotly.graph_objs as go
+
 
 def getOLS(sym):
 
