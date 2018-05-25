@@ -1,5 +1,6 @@
 FROM python:3.6
 
+RUN apt-get install python-dev
 RUN apt-get -y update  && apt-get install -y \
   libpng-dev \
   apt-utils \
