@@ -1,5 +1,5 @@
 FROM python:3.6
-
+RUN apt-get build-essential python3-dev
 RUN apt-get -y update  && apt-get install -y gcc g++ \
   libpng-dev \
   apt-utils \
