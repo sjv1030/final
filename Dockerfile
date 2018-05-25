@@ -1,6 +1,7 @@
 FROM python:3.6
 
-RUN apt-get -y update  && apt-get install -y gcc g++ gcc-c++ \
+RUN apt-get -y update  && apt-get install -y gcc g++ \
+  gcc-c++ \
   libpng-dev \
   apt-utils \
 && rm -rf /var/lib/apt/lists/*
