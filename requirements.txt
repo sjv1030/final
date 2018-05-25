@@ -35,5 +35,7 @@ pytest==3.3.2
 tensorflow==1.5
 scikit-learn==0.19.1
 keras
-pymongo==3.4.0
+cython==0.27.3
+pystan
 fbprophet
+pymongo==3.4.0
