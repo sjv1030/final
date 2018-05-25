@@ -1,7 +1,6 @@
 FROM ubuntu:16.04
 
 RUN apt-get update
-RUN apt-get install -y software-properties-common vim
 RUN add-apt-repository ppa:jonathonf/python-3.6
 RUN apt-get update
 
@@ -22,7 +21,10 @@ WORKDIR /final
 
 COPY requirements.txt ./
 
+#if using Ubuntu above...try this 
 RUN pip install --no-cache-dir -r requirements.txt
+#if not using ubuntu above...this this
+#RUN pip install --no-cache-dir -r requirements.txt
 
 
 RUN git clone https://github.com/sjv1030/data602-finalproject ../final/finalproject
