@@ -1,7 +1,6 @@
 FROM python:3.6
 
-RUN apk add --no-cache gcc libc-dev
-RUN apt-get -y update  && apt-get install -y \
+RUN apt-get -y update  && apt-get install -y gcc \
   libpng-dev \
   apt-utils \
 && rm -rf /var/lib/apt/lists/*
