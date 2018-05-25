@@ -1,9 +1,18 @@
-FROM python:3.6
+FROM amancevice/pandas:0.22.0-python3-alpine
 
-RUN apt-get -y update  && apt-get install -y gcc g++ \
-  libpng-dev \
-  apt-utils \
- && rm -rf /var/lib/apt/lists/*
+RUN apk update && apk upgrade && \
+    apk add --no-cache git
+
+RUN apk add --update curl gcc g++
+
+RUN apk add py-lxml 
+
+#FROM python:3.6
+
+#RUN apt-get -y update  && apt-get install -y gcc g++ \
+#  libpng-dev \
+#  apt-utils \
+# && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /final
 
