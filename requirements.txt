@@ -33,3 +33,4 @@ quandl==3.3.0
 probscale==0.2.3
 pytest==3.3.2
 tensorflow==1.5
+sklearn==0.19.1
