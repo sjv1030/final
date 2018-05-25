@@ -21,7 +21,6 @@ from itertools import chain
 #def runProphet(commmodity):
 def testRunProphet():
 #mlab
-    '''
     client=MongoClient('mongodb://team_nyc:persyy@ds229450.mlab.com:29450/commodities',serverSelectionTimeoutMS=3000)
     db=client.commodities
 
@@ -38,7 +37,7 @@ def testRunProphet():
     ng_daily_df.rename(columns={'Value':'ng_val','Date':'day_timestamp'},index=str,inplace=True)
     ng_daily_df.index=ng_daily_df.day_timestamp
 #finished with mlab formatting
-
+    '''
     '''Variable creation and analysis - ARMA, regression'''
     def createVolArray(df):
 #calculate the volatility regressors; type: close-to-close volatility
@@ -90,12 +89,12 @@ def testRunProphet():
 
 
     def rearrangeDF(lista):
-    #randomize/scramble the input list and convert to pandas series
+    #randomize/scramble the list of simulated volatility and convert to pandas series
         rango=np.arange(len(lista))
         new_index=np.random.choice(rango,len(lista),replace=False)
         return(pd.Series([lista[i] for i in new_index]))
 
-    #dict to contain all 9-day volatility paths
+    #dict to contain all 9-day volatility simulated paths
     dic_ser={}
     for k,v in all_paths.items():
         dic_ser[k]=rearrangeDF(v)
@@ -110,23 +109,26 @@ def testRunProphet():
     '''
     ''' FBProphet '''
 
-    def prepDataSet(daily_df,vol_array):
+    def prepDataSet(daily_df):
 #the dependent variable field is to be labeled 'y'; datetime field labeled 'ds'
 #data preparation
         fb_version=daily_df.rename(columns={'day_timestamp':'ds','ng_val':'y'})
         fb_version['y']=np.log(fb_version['y'].values)
 #ensure that we only select data where there is a volatility measure
-        fb_version1=fb_version.loc[~np.isnan(vol_array),:]
+        #yu = realized historical volatility
+        fb_version1=fb_version.loc[~np.isnan(yu),:]
 #add regressor... optimally this would be standardized
-        good=vol_array[~np.isnan(vol_array)]
+        good=yu[~np.isnan(yu)]
         fb_version1['volatility']=pd.Series(good)
 #shift the volatility by 1 to offset values: only relevant volatility measure is the one the trader knows at time of action and that is the one which measurement period ended prior day
         fb_version1['volatility']=fb_version1['volatility'].shift(1)
         fb_version1.dropna(how='any',inplace=True)
+        #train the model on the last 500 trading days
         train=fb_version1.iloc[-500:,]
         return(train)
 
-    def fitProphet(train):
+    def fitProphet(train,ir_path):
+        #concatenate the 
 #instantiate the prophet object
         ts_prophet=fbprophet.Prophet(changepoint_prior_scale=0.15, interval_width=0.95)
         ts_prophet.add_regressor('volatility')
@@ -136,19 +138,26 @@ def testRunProphet():
 #will be inserting simulated values
 #get path of interest rates
         date_df=ts_prophet.make_future_dataframe(periods=30, freq='d')
-        date_df['volatility']=train['volatility'].append(dic_ser['high path'],ignore_index=True)
+        date_df['volatility']=train['volatility'].append(ir_path,ignore_index=True)
 #just the date output... this serves as input to the predict() function
 #don't know if I'm passing the appropriate arguments here and above
         forecast_data=ts_prophet.predict(date_df)
         forecast_data['yhat']=np.exp(forecast_data['yhat'].values)
+        return(forecast_data)
 #apply the forecast to the entire dataset... this way I have control over the output
+    
+    train=prepDataSet(ng_daily_df)
+    result_set={}
     for k, v in dic_ser.items():
-        train=prepDataSet(ng_daily_df, v)
         #a tuple of dataframes
-        low_vol, mid_vol, high_vol= fitProphet(train)
+        outcome= fitProphet(train,v)
+        result_set[k]=outcome
         
         #first two elements are the x,y inputs for the volatility graphs... the other three graphs contain the FB Prophet prediction and fit for each of the volatility scenarios
-    return ng_daily_df.index.values[-400:], yu[-400:], low_vol, mid_vol, high_vol
+    return ng_daily_df.index.values[-400:], yu[-400:], result_set['low path'], result_set['mid path'], result_set['high path']
+
+#all_paths={'high path':high_path,'mid path':mid_path,'low path':low_path}
+    
 #1) historical volatility plot: plt.plot(ng_daily_df.index.values[-400:],yu[-400:])
 
 ''' legacy stuff
