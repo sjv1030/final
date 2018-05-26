@@ -13,6 +13,8 @@ RUN apt-get install --yes gcc libatlas-base-dev gfortran libeigen3-dev
 
 RUN apt-get install -y python3-dev
 
+RUN apt-get install libpq-dev libxml2-dev libxslt1-dev libldap2-dev libsasl2-dev libffi-dev setuptools
+
 #RUN apt-get -y update  && apt-get install -y gcc g++ \
 #  libpng-dev \
 #  apt-utils \
