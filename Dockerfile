@@ -1,11 +1,16 @@
-FROM amancevice/pandas:0.22.0-python3-alpine
+FROM ubuntu:16.04
 
-RUN apk update && apk upgrade && \
-    apk add --no-cache git
+RUN apt-get update
+RUN apt-get install -y software-properties-common vim
+RUN add-apt-repository ppa:jonathonf/python-3.6
+RUN apt-get update
 
-RUN apk add --update curl gcc g++
+RUN apt-get install -y build-essential python3.6 python3.6-dev python3-pip python3.6-venv
+RUN apt-get install -y git
 
-RUN apk add py-lxml 
+# update pip
+RUN python3.6 -m pip install pip --upgrade
+RUN python3.6 -m pip install wheel
 
 #FROM python:3.6
 
@@ -22,7 +27,7 @@ COPY requirements.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN git clone https://github.com/sjv1030/data602-finalproject ../final/finalproject
+RUN git clone https://github.com/sjv1030/final ../final/finalproject
 
 EXPOSE 27017
 EXPOSE 5000
