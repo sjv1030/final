@@ -33,7 +33,7 @@ matplotlib==2.1.2
 quandl==3.3.0
 probscale==0.2.3
 pytest==3.3.2
-tensorflow==1.5
+tensorflow==1.15.4
 scikit-learn==0.19.1
 keras
 cython==0.27.3
